@@ -1,0 +1,7 @@
+# Ignore all .pyc files
+*.pyc
+
+# Ignore all __pycache__ directories
+__pycache__/
+
+wandb/
