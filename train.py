@@ -118,7 +118,7 @@ def main(args):
                 record_norm=args.record_norm,clamp_func=clamp_func,detach_s=args.detach_s)
 
     print(model)
-    wandb.init(project="SNN",name=args.loss_type)
+    wandb.init(project="SNN",name='Resnet19 16loss')
     wandb.watch(model, log="all")
     #amp
     if args.amp:
@@ -200,7 +200,7 @@ def parse_args():
 
     #dataset settings
     parser.add_argument('--dataset', default='cifar100', help='dataset', type=str)
-    parser.add_argument('--data_path', default='/home/ma-user/work/lw/CIFAR100', help='dataset', type=str)
+    parser.add_argument('--data_path', default='/data/wupeixuan/CIFAR_100_SNN_Higher_Jelly/CIFAR100/', help='dataset', type=str)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--num_classes', default=100, type=int)
     parser.add_argument('--aug', action='store_true')
