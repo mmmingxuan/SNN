@@ -1,0 +1,32 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python 调试程序: 当前文件",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--model", "resnet19",
+                "--device", "cuda:0",
+                "--norm_layer", "2d",
+                "--optimizer", "sgd",
+                "--node", "LIFnode",
+                "--amp",
+                "--loss_type", "16",
+                "--lr", "0.1",
+                "--weight_decay", "1e-4",
+                "--batch_size", "128",
+                "--T", "4", 
+                "--multi_out",
+                "--norm_diff","1",
+                "--norm_list","std3",
+                "--reci_w","4",
+            ]
+        }
+    ]
+}

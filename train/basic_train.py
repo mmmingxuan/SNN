@@ -9,6 +9,7 @@ import datetime
 import json
 import wandb
 
+
 class train_1_loss():
     def __init__(self,model=None,device=None,lr_scheduler=None,optimizer=None,data_loader=None,data_loader_test=None,\
         loss_func=None,print_freq=100,args=None,scaler=None,epochs=320,train_sampler=None,train_tb_writer = None,te_tb_writer = None,max_test_acc1 = 0.,\
@@ -42,7 +43,8 @@ class train_1_loss():
             self.model.to(self.device)
 
     def loss_calculate(self,output,target):
-        return self.loss_func(output[-1].mean(dim=0), target) 
+        # return self.loss_func(output[-1].mean(dim=0), target) 
+        return self.loss_func(output[-1][-1], target)
 
     def train_one_epoch(self,epoch,div=1):
         self.model.train()
@@ -53,17 +55,22 @@ class train_1_loss():
         num_updates = epoch * len(self.data_loader)
         header = 'Epoch: [{}]'.format(epoch)
 
+        from .record import sn 
+        from .node.LIFnode import MultiStepLIFNode
+        
+        sn_list = [sn() for _ in range(len(MultiStepLIFNode.get_all_neurons()))]
+        
         for image, target in metric_logger.log_every(self.data_loader, self.print_freq, header):
             start_time = time.time()
             image, target = image.to(self.device), target.to(self.device)
             # with torch.autograd.detect_anomaly():
             if self.scaler is not None:
                 with amp.autocast():
-                    output = self.model(image)
+                    output = self.model(image, target, epoch)
                     loss = torch.tensor([0.], device=output[0].device)
                     loss += self.loss_calculate(output, target)
             else:
-                output = self.model(image)
+                output = self.model(image, target, epoch)
                 loss = torch.tensor([0.], device=output[0].device)
                 loss += self.loss_calculate(output, target)
 
@@ -78,6 +85,16 @@ class train_1_loss():
                 loss.backward()
                 self.optimizer.step()
 
+            from .node.LIFnode import MultiStepLIFNode
+            for index, Node_instance in enumerate(MultiStepLIFNode.get_all_neurons()):
+                sn_list[index].grad_1.append(Node_instance.grads_1[0])
+                sn_list[index].grad_before_2.append(Node_instance.grads_before[0])        
+                sn_list[index].grad_before_3.append(Node_instance.grads_before[1])
+                sn_list[index].grad_before_4.append(Node_instance.grads_before[2])  
+                sn_list[index].grad_after_2.append(Node_instance.grads_after[0])  
+                sn_list[index].grad_after_3.append(Node_instance.grads_after[1])  
+                sn_list[index].grad_after_4.append(Node_instance.grads_after[2])  
+                     
             functional.reset_net(self.model)
             output = output[-1].mean(dim=0)
             acc1, acc5 = utils.accuracy(output, target, topk=(1, 5))
@@ -96,9 +113,34 @@ class train_1_loss():
             metric_logger.meters['img/s'].update(round(float(batch_size / (time.time() - start_time)),5))
             # self.lr_scheduler.step_update(num_updates=num_updates)
 
+        sn_log = {}
+        
+        import pandas as pd
+        import os
+        
+        filename = "record_grad.csv"
+        data = {}
+        for index, Node_instance in enumerate(sn_list):
+            Node_instance.avg()
+            data[f"sn{index+1}_grad_1"] = Node_instance.avg_grad_1
+            data[f"sn{index+1}_grad_before_2"] = Node_instance.avg_grad_before_2
+            data[f"sn{index+1}_grad_before_3"] = Node_instance.avg_grad_before_3
+            data[f"sn{index+1}_grad_before_4"] = Node_instance.avg_grad_before_4
+            data[f"sn{index+1}_grad_after_2"] = Node_instance.avg_grad_after_2
+            data[f"sn{index+1}_grad_after_3"] = Node_instance.avg_grad_after_3
+            data[f"sn{index+1}_grad_after_4"] = Node_instance.avg_grad_after_4
+
+        df = pd.DataFrame([data])  # 将data转换为包含一行的DataFrame
+        
+        if not os.path.isfile(filename):
+            df.to_csv(filename, index=False, mode='w', header=True)
+        else:
+            df.to_csv(filename, index=False, mode='a', header=False)
+
+            
         # gather the stats from all processes
         metric_logger.synchronize_between_processes()
-        return metric_logger.loss.global_avg, metric_logger.acc1.global_avg, metric_logger.acc5.global_avg
+        return metric_logger.loss.global_avg, metric_logger.acc1.global_avg, metric_logger.acc5.global_avg, sn_log
 
     def evaluate_one_epoch(self):
         self.model.eval()
@@ -171,21 +213,35 @@ class train_1_loss():
 
     def train(self):
         start_time = time.time()
+        max_test_acc = 0
         print(self.output_dir)
         for epoch in range(self.start_epoch, self.epochs):
             self.save_max = False
             # pdb.set_trace()
             if self.distributed:
                 self.train_sampler.set_epoch(epoch)
-            train_loss, train_acc1, train_acc5 = self.train_one_epoch(epoch)
+            train_loss, train_acc1, train_acc5 ,sn_log = self.train_one_epoch(epoch)
             if utils.is_main_process():
                 self.train_tb_writer.add_scalar('train_loss', train_loss, epoch)
                 self.train_tb_writer.add_scalar('train_acc1', train_acc1, epoch)
                 self.train_tb_writer.add_scalar('train_acc5', train_acc5, epoch)
             self.lr_scheduler.step()
-
+            
             test_loss, test_acc1, test_acc5 = self.evaluate_one_epoch()
-            wandb.log({"epoch":epoch, "train_acc1": train_acc1, "train_loss": train_loss, "test_acc1":  test_acc1, "test_loss": test_loss})
+            if test_acc1 > max_test_acc: max_test_acc = test_acc1
+
+            wandb_log = {
+                "epoch":epoch,
+                "train_acc1": train_acc1,
+                "train_loss": train_loss,
+                "test_acc1":  test_acc1,
+                "test_loss": test_loss,
+                "max_test_acc1": max_test_acc
+            }
+            # wandb_log.update(sn_log)
+            wandb.log(wandb_log)
+            
+            
             # if self.te_tb_writer is not None:
             #     if utils.is_main_process():
             #         self.te_tb_writer.add_scalar('test_loss', test_loss, epoch)
@@ -198,8 +254,8 @@ class train_1_loss():
                 self.test_acc5_at_max_test_acc1 = test_acc5
                 self.save_max = True
 
-            # if self.output_dir:
-            #     self.save_checkpoint(epoch)
+            if self.output_dir:
+                self.save_checkpoint(epoch)
                 
             # print(args)
             total_time = time.time() - start_time

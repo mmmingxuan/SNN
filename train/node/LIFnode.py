@@ -1,9 +1,9 @@
 import torch 
-from . import base
 import torch.nn as nn
 from abc import abstractmethod
 from typing import Callable, overload
 from . import base
+import math
 
 class BaseNode(base.MemoryModule):
     def __init__(self,surrogate_function, v_threshold: float = 1., v_reset: float = 0.,
@@ -95,6 +95,9 @@ class LIFNode(BaseNode):
         return super().forward_GradRefine(x,norm,scale)
 
 class MultiStepLIFNode(LIFNode):
+    
+    all_neurons = []
+    
     def __init__(self, surrogate_function, tau: float = 2., decay_input: bool = True, v_threshold: float = 1.,
                  v_reset: float = 0., detach_reset: bool = False, backend='torch',norm_list=None,norm_func=None,scale_func=None,norm_diff=None,record_norm=None,clamp_func=None,detach_s=None):
         super().__init__(surrogate_function, tau, decay_input, v_threshold, v_reset, detach_reset)
@@ -116,6 +119,13 @@ class MultiStepLIFNode(LIFNode):
             self.grad_l_list=[]
             # self.delta_v=[]
         
+        self.norms = []
+        self.grads_1 = []
+        self.grads_before = []
+        self.grads_after = []
+    
+        MultiStepLIFNode.all_neurons.append(self)
+     
     def neuronal_charge(self, x: torch.Tensor):
         if self.detach_s==None:
             super().neuronal_charge(x)
@@ -191,12 +201,20 @@ class MultiStepLIFNode(LIFNode):
         self.norm_list=-1
         # self.tp_v_seq.append(self.v_seq)
         return spike_seq
-
+    
+    @staticmethod
+    def ATAN(x, norm, scale=1, alpha=2):
+        grad_x = scale * alpha / 2 / (1 + (math.pi / 2 * alpha * x / norm ).pow_(2)) 
+        return grad_x
+    
+    
     def forward_GradRefine_Standard_Deviation_step(self, x: torch.Tensor,grad_l_1=None,grad_l=None):
         self.neuronal_charge(x)
         # self.delta_v.append((self.v.detach() - self.v_threshold).cpu())
         if self.norm_list==-1:
             self.norm_list=self.norm_diff(self.v.detach() - self.v_threshold)
+            grad = self.norm_diff(self.ATAN(self.v.detach() - self.v_threshold, 1))
+            self.grads_1.append(grad.item())
             norm,scale=1.,1.
             if self.record_norm:
                 # self.temp_norm_list.append([float(norm)])
@@ -207,7 +225,13 @@ class MultiStepLIFNode(LIFNode):
                 self.temp_norm_list[-1].append((float(((self.v.detach() - self.v_threshold)**2).sum()**(1/2)),float((self.v.detach() - self.v_threshold).abs().sum())))
         else:
             norm=self.norm_func(self.norm_diff(self.v.detach() - self.v_threshold)/self.norm_list)
-            norm=self.clamp_func(norm)
+            if norm<1: norm = 1
+            self.grads_before.append(self.norm_diff(self.ATAN(self.v.detach() - self.v_threshold, 1)).item())
+            self.grads_after.append(self.norm_diff(self.ATAN(self.v.detach() - self.v_threshold, norm)).item())
+            # norm=self.norm_func(self.norm_list/self.norm_diff(self.v.detach() - self.v_threshold))
+            # self.norms.append(norm.item())
+            # if norm>1: norm = 1
+            # norm=self.clamp_func(norm)
             scale=self.scale_func(norm)
             if self.record_norm:
                 self.temp_norm_list[-1].append((float(((self.v.detach() - self.v_threshold)**2).sum()**(1/2)),float((self.v.detach() - self.v_threshold).abs().sum())))
@@ -222,4 +246,16 @@ class MultiStepLIFNode(LIFNode):
         return super().extra_repr() + f', backend={self.backend}'
 
     def reset(self):
+        self.norms = []
+        self.grads_1 = []
+        self.grads_before = []
+        self.grads_after = []
         super().reset()
+        
+    @staticmethod
+    def get_all_neurons():
+        """返回包含所有neuron实例的列表"""
+        return MultiStepLIFNode.all_neurons
+    
+
+    

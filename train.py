@@ -114,11 +114,14 @@ def main(args):
     else:
         model = init_model(args.model)(zero_init_residual=True,num_classes=args.num_classes, pretrained=False, progress=True, \
                 T=args.T, multi_step_neuron=init_node(args.node),norm_layer=init_norm(args.norm_layer), v_threshold=args.v_threshold, surrogate_function=surrogate_function, \
-                detach_reset=True,multi_out=True,datasets=args.dataset,norm_list=args.norm_list,norm_func=norm_func,scale_func=scale_func,norm_diff=norm_diff,\
+                detach_reset=True,multi_out=args.multi_out,datasets=args.dataset,norm_list=args.norm_list,norm_func=norm_func,scale_func=scale_func,norm_diff=norm_diff,\
                 record_norm=args.record_norm,clamp_func=clamp_func,detach_s=args.detach_s)
 
-    print(model)
-    wandb.init(project="SNN",name='Resnet19 16loss')
+    # print(model)
+    # wandb.init(project="Self-erasing", name='SE:19baseline*|16 loss 8*8', tags=["Self-erasing", "baseline"])
+    # wandb.init(project="Self-erasing", name='SE:19|1-mask 最后一个是 后三个平均|use up|scale|softmax|w=0.0', tags=["Self-erasing"])
+    wandb.init(project="Self-erasing", name='记录grad_refine|16loss 只放大 w=4 8*8', tags=["Self-erasing"])
+    # wandb.init(project="DEBUG",name="debug")
     wandb.watch(model, log="all")
     #amp
     if args.amp:
@@ -206,10 +209,11 @@ def parse_args():
     parser.add_argument('--aug', action='store_true')
     
     #model settings
-    parser.add_argument('--model', default='sew_resnet18', type=str)
+    parser.add_argument('--model', default='resnet18', type=str)
     parser.add_argument('--node', default='LIFnode', type=str)
     parser.add_argument('--v_threshold', default=1., type=float)
     parser.add_argument('--norm_layer', default='2d', type=str)
+    parser.add_argument('--multi_out', action='store_true')
 
     #surrogate setting
     parser.add_argument('--norm_list', default=None, type=parse_norm_list)

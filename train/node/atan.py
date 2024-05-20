@@ -86,6 +86,9 @@ class atan_GradRefine(torch.autograd.Function):
         grad_x = None
         if ctx.needs_input_grad[0]: 
             grad_x = ctx.scale_factor * ctx.alpha / 2 / (1 + (math.pi / 2 * ctx.alpha * ctx.saved_tensors[0]/ ctx.norm_factor ).pow_(2)) * grad_output
+        # if ctx.needs_input_grad[0]: 
+        #     grad_x = ctx.scale_factor * ctx.alpha / 2 / (1 + (math.pi / 2 * ctx.alpha * ctx.saved_tensors[0] * ctx.norm_factor ).pow_(2)) * grad_output
+        
         return grad_x, None,None,None
                                                                                                   
 class atan_GradRefine_rgrad(torch.autograd.Function):

@@ -768,3 +768,50 @@ def kaiming_normal_conv_linear_weight(net: nn.Module):
     for m in net.modules():
         if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.Linear)):
             nn.init.kaiming_normal_(m.weight, a=math.sqrt(5))
+
+
+
+# def normalize_mask(mask):
+#     """
+#     Normalize each 4x4 matrix in the batch of masks to range [0, 1].
+
+#     Parameters:
+#         mask (torch.Tensor): A tensor of shape [batch_size, height, width]
+#         where each `height x width` is 4x4.
+
+#     Returns:
+#         torch.Tensor: A normalized tensor of the same shape as input.
+#     """
+#     # Find the minimum and maximum values for each 4x4 matrix
+#     min_vals = mask.view(mask.size(0), -1).min(dim=1, keepdim=True)[0]
+#     max_vals = mask.view(mask.size(0), -1).max(dim=1, keepdim=True)[0]
+
+#     # Compute the range and prevent division by zero
+#     ranges = max_vals - min_vals
+#     ranges[ranges == 0] = 1  # Set zero ranges to 1 to avoid division by zero
+
+#     # Perform normalization
+#     normalized_mask = (mask - min_vals.view(mask.size(0), 1, 1)) / ranges.view(mask.size(0), 1, 1)
+
+#     return normalized_mask
+
+def normalize_mask(mask):
+    # 计算每个4x4子矩阵的和，保持维度以便进行广播操作
+    sum_mask = torch.sum(mask, dim=(1, 2), keepdim=True)
+    # 用每个子矩阵的和来归一化
+    normalized_mask = mask / sum_mask
+    return normalized_mask
+
+
+def softmax_normalize_mask(mask):
+    # mask形状是 (128, 4, 4), 每个4x4的子矩阵独立地应用softmax
+    # 展平每个4x4矩阵为一个16维向量
+    mask_flat = mask.view(-1, mask.shape[1] * mask.shape[2])  # -1 保持第一维大小不变，即128
+
+    # 对每个16维向量应用softmax
+    normalized_mask_flat = F.softmax(mask_flat, dim=-1)
+
+    # 将归一化后的向量恢复到4x4的形状
+    normalized_mask = normalized_mask_flat.view(128, mask.shape[1], mask.shape[2])
+
+    return normalized_mask
