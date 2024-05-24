@@ -4,7 +4,8 @@ import torch.nn.functional as F
 import math
 
 def heaviside(x: torch.Tensor):
-    return (x >= 0).to(x)
+    # return (x >= 0).to(x)
+    return (x > 1e-8).to(x)
 
 class SurrogateFunctionBase(nn.Module):
     def __init__(self, alpha, spiking=True):

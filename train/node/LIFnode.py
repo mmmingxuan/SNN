@@ -123,7 +123,9 @@ class MultiStepLIFNode(LIFNode):
         self.grads_1 = []
         self.grads_before = []
         self.grads_after = []
-    
+        
+        self.mask = None
+        self.rates = None
         MultiStepLIFNode.all_neurons.append(self)
      
     def neuronal_charge(self, x: torch.Tensor):
@@ -153,6 +155,19 @@ class MultiStepLIFNode(LIFNode):
         else:
             return self.forward_origin(x_seq)
 
+    @staticmethod
+    def calculate_spike_rates(spike_seq):
+        rates = []
+        # 获取张量中的元素总数
+        total_elements = spike_seq[0].numel()
+        for tensor in spike_seq:
+            # 计算每个张量中1的个数
+            count_ones = tensor.sum().item()
+            # 计算脉冲发射率
+            spike_rate = count_ones / total_elements
+            rates.append(spike_rate)
+        return rates
+    
     def forward_origin(self, x_seq: torch.Tensor):
         spike_seq = []
         self.v_seq = []
@@ -171,6 +186,7 @@ class MultiStepLIFNode(LIFNode):
         spike_seq = torch.cat(spike_seq, 0)
         self.v_seq = torch.stack(self.v_seq, 0)
         # self.tp_v_seq.append(self.v_seq)
+        self.rates = self.calculate_spike_rates(spike_seq)
         return spike_seq
         
     def forward_GradRefine(self, x_seq: torch.Tensor):
@@ -200,14 +216,10 @@ class MultiStepLIFNode(LIFNode):
         self.v_seq = torch.stack(self.v_seq, 0)
         self.norm_list=-1
         # self.tp_v_seq.append(self.v_seq)
+        self.rates = self.calculate_spike_rates(spike_seq)
         return spike_seq
     
-    @staticmethod
-    def ATAN(x, norm, scale=1, alpha=2):
-        grad_x = scale * alpha / 2 / (1 + (math.pi / 2 * alpha * x / norm ).pow_(2)) 
-        return grad_x
-    
-    
+
     def forward_GradRefine_Standard_Deviation_step(self, x: torch.Tensor,grad_l_1=None,grad_l=None):
         self.neuronal_charge(x)
         # self.delta_v.append((self.v.detach() - self.v_threshold).cpu())
@@ -226,21 +238,54 @@ class MultiStepLIFNode(LIFNode):
         else:
             norm=self.norm_func(self.norm_diff(self.v.detach() - self.v_threshold)/self.norm_list)
             if norm<1: norm = 1
-            self.grads_before.append(self.norm_diff(self.ATAN(self.v.detach() - self.v_threshold, 1)).item())
-            self.grads_after.append(self.norm_diff(self.ATAN(self.v.detach() - self.v_threshold, norm)).item())
-            # norm=self.norm_func(self.norm_list/self.norm_diff(self.v.detach() - self.v_threshold))
-            # self.norms.append(norm.item())
-            # if norm>1: norm = 1
-            # norm=self.clamp_func(norm)
+            # self.grads_before.append(self.norm_diff(self.ATAN(self.v.detach() - self.v_threshold, 1)).item())
+            # self.grads_after.append(self.norm_diff(self.ATAN(self.v.detach() - self.v_threshold, norm)).item())
+            norm=self.clamp_func(norm)
             scale=self.scale_func(norm)
             if self.record_norm:
                 self.temp_norm_list[-1].append((float(((self.v.detach() - self.v_threshold)**2).sum()**(1/2)),float((self.v.detach() - self.v_threshold).abs().sum())))
         spike = self.neuronal_fire_GradRefine(norm,scale,grad_l_1,grad_l)
         self.neuronal_reset(spike)
         return spike
+    
+    @staticmethod
+    def ATAN(x, norm, scale=1, alpha=2):
+        grad_x = scale * alpha / 2 / (1 + (math.pi / 2 * alpha * x / norm ).pow_(2)) 
+        return grad_x
+    
+    @staticmethod
+    def heaviside(x: torch.Tensor):
+        return (x > 1e-9).to(x)
+    
+    def forward_GradRefine_Standard_Deviation_step_1(self, x: torch.Tensor,grad_l_1=None,grad_l=None):
+        self.neuronal_charge(x)
+        # self.delta_v.append((self.v.detach() - self.v_threshold).cpu())
+        if self.norm_list==-1:
+            self.norm_list = self.norm_diff(self.v.detach() - self.v_threshold) / (self.v.detach() - self.v_threshold).numel()
+            self.mask = self.heaviside(self.v.detach() - self.v_threshold)
+            # grad = self.norm_diff(self.ATAN(self.v.detach() - self.v_threshold, 1))
+            # self.grads_1.append(grad.item())
+            norm,scale=1.,1.
+            # if self.record_norm:
+            #     # self.temp_norm_list.append([float(norm)])
+            #     self.temp_norm_list.append([(float(((self.v.detach() - self.v_threshold)**2).sum()**(1/2)),float((self.v.detach() - self.v_threshold).abs().sum()))])
+        elif self.norm_list=='-1':
+            norm,scale=1.,1.
+            if self.record_norm:
+                self.temp_norm_list[-1].append((float(((self.v.detach() - self.v_threshold)**2).sum()**(1/2)),float((self.v.detach() - self.v_threshold).abs().sum())))
+        else:
+            norm = ( self.norm_diff((self.v.detach() - self.v_threshold) * (1 - self.mask))/(1 - self.mask).sum() )/ self.norm_list
+            norm=self.norm_func(norm)
+            if norm<1: norm = 1
+            scale = 1
+        spike = self.neuronal_fire_GradRefine(norm,scale,grad_l_1,grad_l)
+        self.mask = self.heaviside(self.v.detach() - self.v_threshold)
+        self.neuronal_reset(spike)
+        return spike
 
     def neuronal_fire_GradRefine(self,norm,scale,grad_l_1=None,grad_l=None):
         return self.surrogate_function(self.v - self.v_threshold,norm,scale,grad_l_1,grad_l)
+        # return self.surrogate_function((self.v - self.v_threshold) * (1 - self.mask),norm,scale,grad_l_1,grad_l) + self.surrogate_function((self.v - self.v_threshold) * self.mask,1,scale,grad_l_1,grad_l)
 
     def extra_repr(self):
         return super().extra_repr() + f', backend={self.backend}'

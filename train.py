@@ -119,8 +119,8 @@ def main(args):
 
     # print(model)
     # wandb.init(project="Self-erasing", name='SE:19baseline*|16 loss 8*8', tags=["Self-erasing", "baseline"])
-    # wandb.init(project="Self-erasing", name='SE:19|1-mask 最后一个是 后三个平均|use up|scale|softmax|w=0.0', tags=["Self-erasing"])
-    wandb.init(project="Self-erasing", name='记录grad_refine|16loss 只放大 w=4 8*8', tags=["Self-erasing"])
+    wandb.init(project="Self-erasing", name='16loss refine w=6', tags=["Self-erasing"])
+    # wandb.init(project="Self-erasing", name='4loss+baseline', tags=["Self-erasing"])
     # wandb.init(project="DEBUG",name="debug")
     wandb.watch(model, log="all")
     #amp

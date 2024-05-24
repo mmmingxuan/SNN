@@ -85,15 +85,15 @@ class train_1_loss():
                 loss.backward()
                 self.optimizer.step()
 
-            from .node.LIFnode import MultiStepLIFNode
-            for index, Node_instance in enumerate(MultiStepLIFNode.get_all_neurons()):
-                sn_list[index].grad_1.append(Node_instance.grads_1[0])
-                sn_list[index].grad_before_2.append(Node_instance.grads_before[0])        
-                sn_list[index].grad_before_3.append(Node_instance.grads_before[1])
-                sn_list[index].grad_before_4.append(Node_instance.grads_before[2])  
-                sn_list[index].grad_after_2.append(Node_instance.grads_after[0])  
-                sn_list[index].grad_after_3.append(Node_instance.grads_after[1])  
-                sn_list[index].grad_after_4.append(Node_instance.grads_after[2])  
+            # from .node.LIFnode import MultiStepLIFNode
+            # for index, Node_instance in enumerate(MultiStepLIFNode.get_all_neurons()):
+            #     sn_list[index].grad_1.append(Node_instance.grads_1[0])
+            #     sn_list[index].grad_before_2.append(Node_instance.grads_before[0])        
+            #     sn_list[index].grad_before_3.append(Node_instance.grads_before[1])
+            #     sn_list[index].grad_before_4.append(Node_instance.grads_before[2])  
+            #     sn_list[index].grad_after_2.append(Node_instance.grads_after[0])  
+            #     sn_list[index].grad_after_3.append(Node_instance.grads_after[1])  
+            #     sn_list[index].grad_after_4.append(Node_instance.grads_after[2])  
                      
             functional.reset_net(self.model)
             output = output[-1].mean(dim=0)
@@ -118,24 +118,24 @@ class train_1_loss():
         import pandas as pd
         import os
         
-        filename = "record_grad.csv"
-        data = {}
-        for index, Node_instance in enumerate(sn_list):
-            Node_instance.avg()
-            data[f"sn{index+1}_grad_1"] = Node_instance.avg_grad_1
-            data[f"sn{index+1}_grad_before_2"] = Node_instance.avg_grad_before_2
-            data[f"sn{index+1}_grad_before_3"] = Node_instance.avg_grad_before_3
-            data[f"sn{index+1}_grad_before_4"] = Node_instance.avg_grad_before_4
-            data[f"sn{index+1}_grad_after_2"] = Node_instance.avg_grad_after_2
-            data[f"sn{index+1}_grad_after_3"] = Node_instance.avg_grad_after_3
-            data[f"sn{index+1}_grad_after_4"] = Node_instance.avg_grad_after_4
+        # filename = "record_grad.csv"
+        # data = {}
+        # for index, Node_instance in enumerate(sn_list):
+        #     Node_instance.avg()
+        #     data[f"sn{index+1}_grad_1"] = Node_instance.avg_grad_1
+        #     data[f"sn{index+1}_grad_before_2"] = Node_instance.avg_grad_before_2
+        #     data[f"sn{index+1}_grad_before_3"] = Node_instance.avg_grad_before_3
+        #     data[f"sn{index+1}_grad_before_4"] = Node_instance.avg_grad_before_4
+        #     data[f"sn{index+1}_grad_after_2"] = Node_instance.avg_grad_after_2
+        #     data[f"sn{index+1}_grad_after_3"] = Node_instance.avg_grad_after_3
+        #     data[f"sn{index+1}_grad_after_4"] = Node_instance.avg_grad_after_4
 
-        df = pd.DataFrame([data])  # 将data转换为包含一行的DataFrame
+        # df = pd.DataFrame([data])  # 将data转换为包含一行的DataFrame
         
-        if not os.path.isfile(filename):
-            df.to_csv(filename, index=False, mode='w', header=True)
-        else:
-            df.to_csv(filename, index=False, mode='a', header=False)
+        # if not os.path.isfile(filename):
+        #     df.to_csv(filename, index=False, mode='w', header=True)
+        # else:
+        #     df.to_csv(filename, index=False, mode='a', header=False)
 
             
         # gather the stats from all processes
@@ -192,24 +192,27 @@ class train_1_loss():
             os.path.join(self.output_dir, 'checkpoint_latest.pth'))
         self.save_flag = False
 
+        # if epoch == 64 :
+        #     self.save_flag = True
+        
         if epoch % 64 == 0 or epoch == self.epochs - 1:
             self.save_flag = True
 
-        elif self.cos_lr_T == 0:
-            for item in self.lr_step_size:
-                if (epoch + 2) % item == 0:
-                    self.save_flag = True
-                    break
+        # elif self.cos_lr_T == 0:
+        #     for item in self.lr_step_size:
+        #         if (epoch + 2) % item == 0:
+        #             self.save_flag = True
+        #             break
 
         if self.save_flag:
             utils.save_on_master(
                 checkpoint,
                 os.path.join(self.output_dir, f'checkpoint_{epoch}.pth'))
 
-        if self.save_max:
-            utils.save_on_master(
-                checkpoint,
-                os.path.join(self.output_dir, 'checkpoint_max_test_acc1.pth'))
+        # if self.save_max:
+        #     utils.save_on_master(
+        #         checkpoint,
+        #         os.path.join(self.output_dir, 'checkpoint_max_test_acc1.pth'))
 
     def train(self):
         start_time = time.time()
