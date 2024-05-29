@@ -643,171 +643,60 @@ class MultiStepResNet19(nn.Module):
         
         if self.training and self.SE:
             outs = []
+            masks_tmp = []
             masks = []
             for i in range(x_seq.size(0)):
-                if i == 0:
-                    x_tmp = x_seq[i].detach()
-                    x_single = x_seq[i]
-                    x_single = self.avgpool(x_single)
-                    x_single = torch.flatten(x_single, 1)
-                    x_single = self.fc(x_single)
-                    outs.append(x_single)
+                x_tmp = x_seq[i].detach()
+                x_tmp = self.fc(x_tmp.permute(0, 2, 3, 1).contiguous().view(128*8*8,512)).view(128,8,8,100).permute(0,3,1,2).contiguous()
+                x_tmp = torch.nn.functional.softmax(x_tmp, dim=1)  # softmax应用在每个8x8像素点上的100维向量
+                mask = x_tmp[torch.arange(128), label]
+                mask = functional.normalize_mask(mask)
+                mask = mask.detach()
+                masks_tmp.append(mask)
+                
+                count_activ = torch.where(mask > 0.7, 1, 0).sum().item()
+                count_backg = torch.where(mask < 0.05, 1, 0).sum().item()
+                
+                if i==1:
+                    self.mask1_activ.append(count_activ/128)
+                    self.mask1_backg.append(count_backg/128)
+                elif i==2:
+                    self.mask2_activ.append(count_activ/128)
+                    self.mask2_backg.append(count_backg/128)
+                elif i==3:
+                    self.mask3_activ.append(count_activ/128)
+                    self.mask3_backg.append(count_backg/128)
 
 
-                    # x_tmp = self.fc(x_tmp.view(-1, 512))
-                    # x_tmp = x_tmp.detach()
-                    # x_tmp = x_tmp.view(x_seq.shape[1], self.fc.out_features, x_seq.shape[3], x_seq.shape[3]) # 128, 100, 8, 8
-                    # mask = x_tmp[torch.arange(128), label]
-                    # mask = mask.detach()
-                    
-                    
-                    # 对比3 在每个像素点512维经过FC层变为100维, 对每个像素点100维的向量在进行softmax操作
-                    x_tmp = self.fc(x_tmp.view(-1, 512))
-                    x_tmp = x_tmp.detach()
-                    x_tmp = x_tmp.view(x_seq.shape[1], self.fc.out_features, x_seq.shape[3], x_seq.shape[3])  # 例如这里是 [128, 100, 8, 8]
-                    x_tmp = x_tmp
-                    x_tmp = torch.nn.functional.softmax(x_tmp, dim=1)  # softmax应用在每个8x8像素点上的100维向量
-                    mask = x_tmp[torch.arange(128), label]
-                    mask = mask.detach()
-                    
-                else:
-                    #记录mask的前三大的值
-                    # self.get_top_three_values(mask, i)
+            masks_tmp = torch.stack(masks_tmp)
 
 
-                    # 1. 1-mask use w 控制使用程度  w在0.6以下出现过拟合
-                    # w = 0.6
-                    # mask = functional.normalize_mask(mask)
-                    # mask = w + (1 - w) * (1 - mask)
-                    
-                    # scale = x_seq.shape[3] * x_seq.shape[4] / mask.sum(dim=(1, 2))
-                    # scale = scale.unsqueeze(1).unsqueeze(2)
-                    # mask = (mask * scale).unsqueeze(1) 
-                    
-                    # 1.1 1-mask use w 控制使用程度  使用softmax
-                    # w = 0
-                    # mask = functional.softmax_normalize_mask(mask)
-                    # mask = w + (1 - w) * (1 - mask)
-                        
-                    # scale = x_seq.shape[3] * x_seq.shape[4] / mask.sum(dim=(1, 2))
-                    # scale = scale.unsqueeze(1).unsqueeze(2)
-                    # mask = (mask * scale).unsqueeze(1)  
+            # 1-其他三个的平均值
+            # for i in range(masks_tmp.size(0)):
+            #     others_mean = torch.mean(torch.cat([masks_tmp[:i], masks_tmp[i+1:]]), dim=0)
+            #     w = 0
+            #     mask = w + (1 - others_mean)*(1 - w)
+            #     masks.append(mask)
 
-                    
-                    # 1.2 上1/4圆 
-                    # mask = functional.softmax_normalize_mask(mask)
-                    # mask = 1 - (mask**2)
-                    
-                    # scale = x_seq.shape[3] * x_seq.shape[4] / mask.sum(dim=(1, 2))
-                    # scale = scale.unsqueeze(1).unsqueeze(2)
-                    # mask = (mask * scale).unsqueeze(1)
-                    
-                    
-                    #1.3 下1/4圆  
-                    # mask = functional.softmax_normalize_mask(mask)
-                    
-                    # mask = 1 - torch.sqrt(mask * (2 - mask))
-                    
-                    # scale = x_seq.shape[3] * x_seq.shape[4] / mask.sum(dim=(1, 2))
-                    # scale = scale.unsqueeze(1).unsqueeze(2)
-                    # mask = (mask * scale).unsqueeze(1)  
-                    
-                    # 1.4 s型
-                    # mask = functional.softmax_normalize_mask(mask)
-                    
-                    # mask = torch.where(mask < 0.5, -2 * mask**2 + 1, 2 * mask**2 - 4 * mask + 2)
-                    
-                    # scale = x_seq.shape[3] * x_seq.shape[4] / mask.sum(dim=(1, 2))
-                    # scale = scale.unsqueeze(1).unsqueeze(2)
-                    # mask = (mask * scale).unsqueeze(1)  
-                    
+            # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的1-mean，不包含自己，所以第0个mask是全为1的
+            masks = [torch.ones_like(masks_tmp[0])] 
+            for i in range(1, masks_tmp.size(0)):
+                others_mean = torch.mean(masks_tmp[:i], dim=0)
+                w = 0
+                mask = w + (1 - others_mean)*(1 - w)
+                masks.append(mask)
 
-                    
-                    # 2. 模仿Self-erasing, 进行背景、潜在区筛选   mask = functional.normalize_mask(mask)
-                    # mask = functional.normalize_mask(mask)
-                    # trinary_mask = torch.ones_like(mask)  # 初始化为1
-                    # trinary_mask = torch.where(mask < 0.05, 0, trinary_mask)  # 小于0.05的赋值为0
-                    # trinary_mask = torch.where(mask > 0.8, 0, trinary_mask)  # 大于0.7的赋值为0
-                    # mask = trinary_mask.unsqueeze(1) 
+            for i in range(x_seq.size(0)):
+                x_single = x_seq[i]
+                scale = x_seq.shape[3] * x_seq.shape[4] / masks[i].sum(dim=(1, 2))
+                scale = scale.unsqueeze(1).unsqueeze(2)
+                mask = (masks[i] * scale).unsqueeze(1)  
+                x_single = x_single * mask
+                x_single = self.avgpool(x_single)
+                x_single = torch.flatten(x_single, 1)
+                x_single = self.fc(x_single)
+                outs.append(x_single)
 
-
-                    # 2.1 scale版 三元掩码   mask = functional.normalize_mask(mask)
-                    # mask = functional.normalize_mask(mask)
-                    # trinary_mask = torch.ones_like(mask)  # 初始化为1
-                    # trinary_mask = torch.where(mask < 0.05, 0, trinary_mask)  # 小于0.05的赋值为0
-                    # trinary_mask = torch.where(mask > 0.8, 0.5, trinary_mask)  # 大于0.7的赋值为0
-                    # mask = trinary_mask.unsqueeze(1) 
-                    # scale = mask.shape[2] * mask.shape[3] / (mask.sum(dim=(2, 3))+ 1e-6)
-                    # scale = scale.view(128, 1, 1, 1)
-                    # mask = mask * scale
-
-
-                    # 2.2 softmax计算mask   改为  mask = functional.softmax_normalize_mask(mask)
-                    # mask = functional.softmax_normalize_mask(mask)
-                    # trinary_mask = torch.ones_like(mask)  # 初始化为1
-                    # trinary_mask = torch.where(mask < 0.01, 0, trinary_mask)  # 
-                    # trinary_mask = torch.where(mask > 0.8, 0.5, trinary_mask)  # 
-                    # mask = trinary_mask.unsqueeze(1) 
-
-                    count_activ = torch.where(mask > 0.5, 1, 0).sum().item()
-                    count_backg = torch.where(mask < 0.0001, 1, 0).sum().item()
-                    
-                    if i==1:
-                        self.mask1_activ.append(count_activ/128)
-                        self.mask1_backg.append(count_backg/128)
-                    elif i==2:
-                        self.mask2_activ.append(count_activ/128)
-                        self.mask2_backg.append(count_backg/128)
-                    elif i==3:
-                        self.mask3_activ.append(count_activ/128)
-                        self.mask3_backg.append(count_backg/128)
-
-                    # 2.3 scale + softmax计算mask   改为  mask = functional.softmax_normalize_mask(mask)
-                    # mask = functional.softmax_normalize_mask(mask)
-                    # trinary_mask = torch.ones_like(mask)  # 初始化为1
-                    # trinary_mask = torch.where(mask < 0.0001, 0.5, trinary_mask)  # 
-                    # trinary_mask = torch.where(mask > 0.5, 0.5, trinary_mask)  # 
-                    # mask = trinary_mask.unsqueeze(1) 
-                    # scale = mask.shape[2] * mask.shape[3] / (mask.sum(dim=(2, 3))+ 1e-6)
-                    # scale = scale.view(128, 1, 1, 1)
-                    # mask = mask * scale
-
-
-
-                    # mask = functional.softmax_normalize_mask(mask)
-
-
-                    x_tmp = x_seq[i].detach()
-                    x_single = x_seq[i]
-
-
-                #----------------------------------------------------------------------------------
-                    # x_single = x_single * mask
-                #----------------------------------------------------------------------------------
-
-
-
-                    #2.4 每次计算mask时用的是上一时间步的 C×H×W 再乘上mask的结果 
-                    # x_tmp = x_single.detach()
-
-                    x_single = self.avgpool(x_single)
-                    x_single = torch.flatten(x_single, 1)
-                    x_single = self.fc(x_single)
-                    outs.append(x_single)
-
-                    # x_tmp = self.fc(x_tmp.view(-1, 512))
-                    # x_tmp = x_tmp.detach()
-                    # x_tmp = x_tmp.view(x_seq.shape[1], self.fc.out_features, x_seq.shape[3], x_seq.shape[3]) # 128, 100, 4, 4
-                    # mask = x_tmp[torch.arange(128), label]
-                    # mask = mask.detach()
-                    
-                    # 对比3 在每个像素点512维经过FC层变为100维, 对每个像素点100维的向量在进行softmax操作
-                    x_tmp = self.fc(x_tmp.view(-1, 512))
-                    x_tmp = x_tmp.detach()
-                    x_tmp = x_tmp.view(x_seq.shape[1], self.fc.out_features, x_seq.shape[3], x_seq.shape[3])  # 例如这里是 [128, 100, 8, 8]
-                    x_tmp = torch.nn.functional.softmax(x_tmp, dim=1)  # softmax应用在每个8x8像素点上的100维向量
-                    mask = x_tmp[torch.arange(128), label]
-                    mask = mask.detach()
             
             if self.multi_out:
                 outs = torch.stack(outs, dim=0)

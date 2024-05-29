@@ -58,7 +58,7 @@ class train_1_loss():
         from .record import sn 
         from .node.LIFnode import MultiStepLIFNode
         
-        sn_list = [sn() for _ in range(len(MultiStepLIFNode.get_all_neurons()))]
+        # sn_list = [sn() for _ in range(len(MultiStepLIFNode.get_all_neurons()))]
         
         for image, target in metric_logger.log_every(self.data_loader, self.print_freq, header):
             start_time = time.time()
@@ -94,7 +94,9 @@ class train_1_loss():
             #     sn_list[index].grad_after_2.append(Node_instance.grads_after[0])  
             #     sn_list[index].grad_after_3.append(Node_instance.grads_after[1])  
             #     sn_list[index].grad_after_4.append(Node_instance.grads_after[2])  
-                     
+
+
+
             functional.reset_net(self.model)
             output = output[-1].mean(dim=0)
             acc1, acc5 = utils.accuracy(output, target, topk=(1, 5))
@@ -114,9 +116,50 @@ class train_1_loss():
             # self.lr_scheduler.step_update(num_updates=num_updates)
 
         sn_log = {}
-        
+
+        mask_max_log = {}
         import pandas as pd
-        import os
+        import numpy as np
+        # mask_max_log["mask1_max1"] = np.mean(self.model.mask1_max1)
+        # mask_max_log["mask1_max2"] = np.mean(self.model.mask1_max2)
+        # mask_max_log["mask1_max3"] = np.mean(self.model.mask1_max3)
+        # mask_max_log["mask2_max1"] = np.mean(self.model.mask2_max1)
+        # mask_max_log["mask2_max2"] = np.mean(self.model.mask2_max2)
+        # mask_max_log["mask2_max3"] = np.mean(self.model.mask2_max3)
+        # mask_max_log["mask3_max1"] = np.mean(self.model.mask3_max1)
+        # mask_max_log["mask3_max2"] = np.mean(self.model.mask3_max2)
+        # mask_max_log["mask3_max3"] = np.mean(self.model.mask3_max3)
+
+        # mask_max_log["mask1_q1"] = np.mean(self.model.mask1_q1)
+        # mask_max_log["mask1_q2"] = np.mean(self.model.mask1_q2)
+        # mask_max_log["mask1_q3"] = np.mean(self.model.mask1_q3)
+        # mask_max_log["mask2_q1"] = np.mean(self.model.mask2_q1)
+        # mask_max_log["mask2_q2"] = np.mean(self.model.mask2_q2)
+        # mask_max_log["mask2_q3"] = np.mean(self.model.mask2_q3)
+        # mask_max_log["mask3_q1"] = np.mean(self.model.mask3_q1)
+        # mask_max_log["mask3_q2"] = np.mean(self.model.mask3_q2)
+        # mask_max_log["mask3_q3"] = np.mean(self.model.mask3_q3)
+
+        mask_max_log["mask1_activ"] = np.mean(self.model.mask1_activ)
+        mask_max_log["mask1_backg"] = np.mean(self.model.mask1_backg)
+        mask_max_log["mask2_activ"] = np.mean(self.model.mask2_activ)
+        mask_max_log["mask2_backg"] = np.mean(self.model.mask2_backg)
+        mask_max_log["mask3_activ"] = np.mean(self.model.mask3_activ)
+        mask_max_log["mask3_backg"] = np.mean(self.model.mask3_backg)
+
+        mask_max_log["p0"] = np.mean(self.model.p0)
+        mask_max_log["p1"] = np.mean(self.model.p1)
+        mask_max_log["p2"] = np.mean(self.model.p2)
+        mask_max_log["p3"] = np.mean(self.model.p3)
+
+
+
+        self.model.reset_mask()
+
+
+        
+        # import pandas as pd
+        # import os
         
         # filename = "record_grad.csv"
         # data = {}
@@ -140,7 +183,7 @@ class train_1_loss():
             
         # gather the stats from all processes
         metric_logger.synchronize_between_processes()
-        return metric_logger.loss.global_avg, metric_logger.acc1.global_avg, metric_logger.acc5.global_avg, sn_log
+        return metric_logger.loss.global_avg, metric_logger.acc1.global_avg, metric_logger.acc5.global_avg, mask_max_log
 
     def evaluate_one_epoch(self):
         self.model.eval()
@@ -192,10 +235,11 @@ class train_1_loss():
             os.path.join(self.output_dir, 'checkpoint_latest.pth'))
         self.save_flag = False
 
-        # if epoch == 64 :
-        #     self.save_flag = True
         
-        if epoch % 64 == 0 or epoch == self.epochs - 1:
+        # if epoch % 64 == 0:
+        #     self.save_flag = True
+
+        if epoch == self.epochs - 1:
             self.save_flag = True
 
         # elif self.cos_lr_T == 0:
@@ -223,7 +267,7 @@ class train_1_loss():
             # pdb.set_trace()
             if self.distributed:
                 self.train_sampler.set_epoch(epoch)
-            train_loss, train_acc1, train_acc5 ,sn_log = self.train_one_epoch(epoch)
+            train_loss, train_acc1, train_acc5 ,mask_max_log = self.train_one_epoch(epoch)
             if utils.is_main_process():
                 self.train_tb_writer.add_scalar('train_loss', train_loss, epoch)
                 self.train_tb_writer.add_scalar('train_acc1', train_acc1, epoch)
@@ -241,7 +285,7 @@ class train_1_loss():
                 "test_loss": test_loss,
                 "max_test_acc1": max_test_acc
             }
-            # wandb_log.update(sn_log)
+            wandb_log.update(mask_max_log)
             wandb.log(wandb_log)
             
             
@@ -252,10 +296,10 @@ class train_1_loss():
             #         self.te_tb_writer.add_scalar('test_acc5', test_acc5, epoch)
 
 
-            if self.max_test_acc1 < test_acc1:
-                self.max_test_acc1 = test_acc1
-                self.test_acc5_at_max_test_acc1 = test_acc5
-                self.save_max = True
+            # if self.max_test_acc1 < test_acc1:
+            #     self.max_test_acc1 = test_acc1
+            #     self.test_acc5_at_max_test_acc1 = test_acc5
+            #     self.save_max = True
 
             if self.output_dir:
                 self.save_checkpoint(epoch)

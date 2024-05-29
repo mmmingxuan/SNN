@@ -28,7 +28,12 @@ import wandb
 
 def main(args):
 
-    #surrogate
+    # wandb.init(project="Self-erasing", name=s'SE:19baseline*|16 loss 8*8', tags=["Self-erasing", "baseline"])
+    # wandb.init(project="SE", name='SE 掩码 w>0.8 w<0.01', tags=["SE"])
+    # wandb.init(project="Self-erasing", name='4loss+baseline', tags=["Self-erasing"])
+    # wandb.init(project="DEBUG",name="debug")
+    wandb.init(project="record",name="前无后有 w=0 看其他")
+
     norm_func=default_norm_func
     scale_func=default_scale_func
     clamp_func=clamp_func_default
@@ -112,16 +117,32 @@ def main(args):
             conv_type='normal',
             )
     else:
-        model = init_model(args.model)(zero_init_residual=True,num_classes=args.num_classes, pretrained=False, progress=True, \
-                T=args.T, multi_step_neuron=init_node(args.node),norm_layer=init_norm(args.norm_layer), v_threshold=args.v_threshold, surrogate_function=surrogate_function, \
-                detach_reset=True,multi_out=args.multi_out,datasets=args.dataset,norm_list=args.norm_list,norm_func=norm_func,scale_func=scale_func,norm_diff=norm_diff,\
-                record_norm=args.record_norm,clamp_func=clamp_func,detach_s=args.detach_s)
+        model = init_model(args.model)(
+            zero_init_residual=True,
+            num_classes=args.num_classes,
+            pretrained=False,
+            progress=True,
+            T=args.T,
+            multi_step_neuron=init_node(args.node),
+            norm_layer=init_norm(args.norm_layer),
+            v_threshold=args.v_threshold,
+            surrogate_function=surrogate_function,
+            detach_reset=True,
+            multi_out=args.multi_out,
+            SE=args.SE,
+            datasets=args.dataset,
+            norm_list=args.norm_list,
+            norm_func=norm_func,
+            scale_func=scale_func,
+            norm_diff=norm_diff,
+            record_norm=args.record_norm,
+            clamp_func=clamp_func,
+            detach_s=args.detach_s,
+            tau=args.tau
+        )
 
     # print(model)
-    # wandb.init(project="Self-erasing", name='SE:19baseline*|16 loss 8*8', tags=["Self-erasing", "baseline"])
-    wandb.init(project="Self-erasing", name='16loss refine w=6', tags=["Self-erasing"])
-    # wandb.init(project="Self-erasing", name='4loss+baseline', tags=["Self-erasing"])
-    # wandb.init(project="DEBUG",name="debug")
+
     wandb.watch(model, log="all")
     #amp
     if args.amp:
@@ -203,7 +224,7 @@ def parse_args():
 
     #dataset settings
     parser.add_argument('--dataset', default='cifar100', help='dataset', type=str)
-    parser.add_argument('--data_path', default='/data/wupeixuan/CIFAR_100_SNN_Higher_Jelly/CIFAR100/', help='dataset', type=str)
+    parser.add_argument('--data_path', default='"/home/wliu/data/datasets/"', help='dataset', type=str)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--num_classes', default=100, type=int)
     parser.add_argument('--aug', action='store_true')
@@ -214,7 +235,8 @@ def parse_args():
     parser.add_argument('--v_threshold', default=1., type=float)
     parser.add_argument('--norm_layer', default='2d', type=str)
     parser.add_argument('--multi_out', action='store_true')
-
+    parser.add_argument('--tau', default=2., type=float)
+    parser.add_argument('--SE', action='store_true')
     #surrogate setting
     parser.add_argument('--norm_list', default=None, type=parse_norm_list)
     parser.add_argument('--scale_generate',default=None)

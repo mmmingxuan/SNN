@@ -84,7 +84,10 @@ class LIFNode(BaseNode):
 
         else:
             if self.v_reset is None or self.v_reset == 0.:
-                self.v = self.v * (1. - 1. / self.tau) + x
+                if type(self.v) is float:
+                    self.v = x
+                else:
+                    self.v = self.v * (1 - 1. / self.tau) + x
             else:
                 self.v = self.v - (self.v - self.v_reset) / self.tau + x
 
@@ -127,7 +130,6 @@ class MultiStepLIFNode(LIFNode):
         self.mask = None
         self.rates = None
         MultiStepLIFNode.all_neurons.append(self)
-     
     def neuronal_charge(self, x: torch.Tensor):
         if self.detach_s==None:
             super().neuronal_charge(x)
@@ -186,7 +188,7 @@ class MultiStepLIFNode(LIFNode):
         spike_seq = torch.cat(spike_seq, 0)
         self.v_seq = torch.stack(self.v_seq, 0)
         # self.tp_v_seq.append(self.v_seq)
-        self.rates = self.calculate_spike_rates(spike_seq)
+        # self.rates = self.calculate_spike_rates(spike_seq)
         return spike_seq
         
     def forward_GradRefine(self, x_seq: torch.Tensor):

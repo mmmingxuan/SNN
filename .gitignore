@@ -1,8 +1,9 @@
 # Ignore all .pyc files
 *.pyc
-
+"/
 logs/
-
+.history/
+.vscode/
 # Ignore all __pycache__ directories
 __pycache__/
 

@@ -12,20 +12,22 @@
             "console": "integratedTerminal",
             "args": [
                 "--model", "resnet19",
-                "--device", "cuda:0",
+                "--device", "cuda:4",
                 "--norm_layer", "2d",
                 "--optimizer", "sgd",
                 "--node", "LIFnode",
                 "--amp",
-                "--loss_type", "16",
+                "--loss_type", "TET",
                 "--lr", "0.1",
                 "--weight_decay", "1e-4",
                 "--batch_size", "128",
                 "--T", "4", 
-                "--multi_out",
-                "--norm_diff","1",
-                "--norm_list","std3",
-                "--reci_w","4",
+                "--SE",
+                "--tau", "1.1",
+                // "--multi_out",
+                // "--norm_diff","1",
+                // "--norm_list","std3",
+                // "--reci_w","4",
             ]
         }
     ]
