@@ -140,24 +140,24 @@ class train_1_loss():
         # mask_max_log["mask3_q2"] = np.mean(self.model.mask3_q2)
         # mask_max_log["mask3_q3"] = np.mean(self.model.mask3_q3)
 
-        mask_max_log["mask1_activ"] = np.mean(self.model.mask1_activ)
-        mask_max_log["mask1_backg"] = np.mean(self.model.mask1_backg)
-        mask_max_log["mask2_activ"] = np.mean(self.model.mask2_activ)
-        mask_max_log["mask2_backg"] = np.mean(self.model.mask2_backg)
-        mask_max_log["mask3_activ"] = np.mean(self.model.mask3_activ)
-        mask_max_log["mask3_backg"] = np.mean(self.model.mask3_backg)
+        # mask_max_log["mask1_activ"] = np.mean(self.model.mask1_activ)
+        # mask_max_log["mask1_backg"] = np.mean(self.model.mask1_backg)
+        # mask_max_log["mask2_activ"] = np.mean(self.model.mask2_activ)
+        # mask_max_log["mask2_backg"] = np.mean(self.model.mask2_backg)
+        # mask_max_log["mask3_activ"] = np.mean(self.model.mask3_activ)
+        # mask_max_log["mask3_backg"] = np.mean(self.model.mask3_backg)
+
+        mask_max_log["mask1_Eras"] = np.mean(self.model.mask1_activ)
+        mask_max_log["mask2_Eras"] = np.mean(self.model.mask2_activ)
+        mask_max_log["mask3_Eras"] = np.mean(self.model.mask3_activ)
 
         mask_max_log["p0"] = np.mean(self.model.p0)
         mask_max_log["p1"] = np.mean(self.model.p1)
         mask_max_log["p2"] = np.mean(self.model.p2)
         mask_max_log["p3"] = np.mean(self.model.p3)
 
-
-
         self.model.reset_mask()
 
-
-        
         # import pandas as pd
         # import os
         

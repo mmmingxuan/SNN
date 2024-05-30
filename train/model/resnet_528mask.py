@@ -650,22 +650,22 @@ class MultiStepResNet19(nn.Module):
                 x_tmp = self.fc(x_tmp.permute(0, 2, 3, 1).contiguous().view(128*8*8,512)).view(128,8,8,100).permute(0,3,1,2).contiguous()
                 x_tmp = torch.nn.functional.softmax(x_tmp, dim=1)  # softmax应用在每个8x8像素点上的100维向量
                 mask = x_tmp[torch.arange(128), label]
-                mask = functional.normalize_mask(mask)
+                # mask = functional.normalize_mask(mask)
                 mask = mask.detach()
                 masks_tmp.append(mask)
                 
-                count_activ = torch.where(mask > 0.7, 1, 0).sum().item()
-                count_backg = torch.where(mask < 0.05, 1, 0).sum().item()
+                # count_activ = torch.where(mask > 0.7, 1, 0).sum().item()
+                # count_backg = torch.where(mask < 0.05, 1, 0).sum().item()
                 
-                if i==1:
-                    self.mask1_activ.append(count_activ/128)
-                    self.mask1_backg.append(count_backg/128)
-                elif i==2:
-                    self.mask2_activ.append(count_activ/128)
-                    self.mask2_backg.append(count_backg/128)
-                elif i==3:
-                    self.mask3_activ.append(count_activ/128)
-                    self.mask3_backg.append(count_backg/128)
+                # if i==1:
+                #     self.mask1_activ.append(count_activ/128)
+                #     self.mask1_backg.append(count_backg/128)
+                # elif i==2:
+                #     self.mask2_activ.append(count_activ/128)
+                #     self.mask2_backg.append(count_backg/128)
+                # elif i==3:
+                #     self.mask3_activ.append(count_activ/128)
+                #     self.mask3_backg.append(count_backg/128)
 
 
             masks_tmp = torch.stack(masks_tmp)
@@ -674,18 +674,33 @@ class MultiStepResNet19(nn.Module):
             # 1-其他三个的平均值
             # for i in range(masks_tmp.size(0)):
             #     others_mean = torch.mean(torch.cat([masks_tmp[:i], masks_tmp[i+1:]]), dim=0)
-            #     w = 0
+            #     w = 0.5
             #     mask = w + (1 - others_mean)*(1 - w)
             #     masks.append(mask)
 
             # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的1-mean，不包含自己，所以第0个mask是全为1的
-            masks = [torch.ones_like(masks_tmp[0])] 
-            for i in range(1, masks_tmp.size(0)):
-                others_mean = torch.mean(masks_tmp[:i], dim=0)
-                w = 0
-                mask = w + (1 - others_mean)*(1 - w)
-                masks.append(mask)
+            # masks = [torch.ones_like(masks_tmp[0])] 
+            # for i in range(1, masks_tmp.size(0)):
+            #     others_mean = torch.mean(masks_tmp[:i], dim=0)
+            #     w = 0.5
+            #     mask = w + (1 - others_mean)*(1 - w)
+            #     masks.append(mask)
 
+            # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的mean,然后进行掩码，不包含自己，所以第0个mask是全为1的
+            masks = [] 
+            mask = torch.ones_like(masks_tmp[0])
+            masks.append(mask)
+            th = 0.8
+            for i in range(1, masks_tmp.size(0)):
+                mask = torch.where(masks_tmp[i-1] > th, 0, mask)
+                masks.append(mask)    
+                if i==1:
+                    self.mask1_activ.append(mask.sum())
+                elif i==2:
+                    self.mask2_activ.append(mask.sum())  
+                elif i==3:
+                    self.mask3_activ.append(mask.sum())           
+            
             for i in range(x_seq.size(0)):
                 x_single = x_seq[i]
                 scale = x_seq.shape[3] * x_seq.shape[4] / masks[i].sum(dim=(1, 2))
