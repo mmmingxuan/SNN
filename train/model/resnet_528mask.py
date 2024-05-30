@@ -690,7 +690,7 @@ class MultiStepResNet19(nn.Module):
             masks = [] 
             mask = torch.ones_like(masks_tmp[0])
             masks.append(mask)
-            th = 0.8
+            th = 0.9
             for i in range(1, masks_tmp.size(0)):
                 mask = torch.where(masks_tmp[i-1] > th, 0, mask)
                 masks.append(mask)    
@@ -703,7 +703,9 @@ class MultiStepResNet19(nn.Module):
             
             for i in range(x_seq.size(0)):
                 x_single = x_seq[i]
-                scale = x_seq.shape[3] * x_seq.shape[4] / masks[i].sum(dim=(1, 2))
+                mask_sum = masks[i].sum(dim=(1, 2))
+                mask_sum[mask_sum == 0] = 64  # 如果mask_sum为0，则设置为64
+                scale = x_seq.shape[3] * x_seq.shape[4] / mask_sum
                 scale = scale.unsqueeze(1).unsqueeze(2)
                 mask = (masks[i] * scale).unsqueeze(1)  
                 x_single = x_single * mask
