@@ -695,11 +695,11 @@ class MultiStepResNet19(nn.Module):
                 mask = torch.where(masks_tmp[i-1] > th, 0, mask)
                 masks.append(mask)    
                 if i==1:
-                    self.mask1_activ.append(mask.sum())
+                    self.mask1_activ.append(mask.sum().item()/128)
                 elif i==2:
-                    self.mask2_activ.append(mask.sum())  
+                    self.mask2_activ.append(mask.sum().item()/128)  
                 elif i==3:
-                    self.mask3_activ.append(mask.sum())           
+                    self.mask3_activ.append(mask.sum().item()/128)           
             
             for i in range(x_seq.size(0)):
                 x_single = x_seq[i]
