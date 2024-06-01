@@ -648,9 +648,13 @@ class MultiStepResNet19(nn.Module):
             for i in range(x_seq.size(0)):
                 x_tmp = x_seq[i].detach()
                 x_tmp = self.fc(x_tmp.permute(0, 2, 3, 1).contiguous().view(128*8*8,512)).view(128,8,8,100).permute(0,3,1,2).contiguous()
-                x_tmp = torch.nn.functional.softmax(x_tmp, dim=1)  # softmax应用在每个8x8像素点上的100维向量
+                
+                # x_tmp = torch.nn.functional.softmax(x_tmp, dim=1)  # softmax应用在每个8x8像素点上的100维向量
+                
                 mask = x_tmp[torch.arange(128), label]
-                # mask = functional.normalize_mask(mask)
+                
+                # mask = functional.softmax_normalize_mask(mask)
+                
                 mask = mask.detach()
                 masks_tmp.append(mask)
                 
@@ -670,7 +674,7 @@ class MultiStepResNet19(nn.Module):
 
             masks_tmp = torch.stack(masks_tmp)
 
-
+    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
             # 1-其他三个的平均值
             # for i in range(masks_tmp.size(0)):
             #     others_mean = torch.mean(torch.cat([masks_tmp[:i], masks_tmp[i+1:]]), dim=0)
@@ -678,6 +682,7 @@ class MultiStepResNet19(nn.Module):
             #     mask = w + (1 - others_mean)*(1 - w)
             #     masks.append(mask)
 
+    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
             # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的1-mean，不包含自己，所以第0个mask是全为1的
             # masks = [torch.ones_like(masks_tmp[0])] 
             # for i in range(1, masks_tmp.size(0)):
@@ -686,20 +691,50 @@ class MultiStepResNet19(nn.Module):
             #     mask = w + (1 - others_mean)*(1 - w)
             #     masks.append(mask)
 
+    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
             # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的mean,然后进行掩码，不包含自己，所以第0个mask是全为1的
             masks = [] 
             mask = torch.ones_like(masks_tmp[0])
             masks.append(mask)
-            th = 0.9
+            th = 0.8
             for i in range(1, masks_tmp.size(0)):
-                mask = torch.where(masks_tmp[i-1] > th, 0, mask)
+                
+                # 动态阈值，阈值为均值＋标准差
+                # th = functional.caculate_th(masks_tmp[i-1]).to(mask.device)
+                # mask = torch.where(masks_tmp[i-1] > th.unsqueeze(1).unsqueeze(2), 0, mask)
+                
+                # 固定阈值
+                # mask = torch.where(masks_tmp[i-1] > th, 0, mask)
+                
                 masks.append(mask)    
                 if i==1:
                     self.mask1_activ.append(mask.sum().item()/128)
                 elif i==2:
                     self.mask2_activ.append(mask.sum().item()/128)  
                 elif i==3:
-                    self.mask3_activ.append(mask.sum().item()/128)           
+                    self.mask3_activ.append(mask.sum().item()/128)    
+
+    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+            # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的过完FC平均再Softmax，不包含自己，所以第0个mask是全为1的
+            # 所以要记得把之前的softmax注释掉，这里操作的masks_tmp是原始过完FC的
+            # masks = [] 
+            # mask = torch.ones_like(masks_tmp[0])
+            # masks.append(mask)
+            # th = 0.7
+            # for i in range(1, masks_tmp.size(0)):
+            #     others_mean = torch.mean(masks_tmp[:i], dim=0)
+            #     others_soft = torch.nn.functional.softmax(others_mean, dim=1)
+            #     mask = torch.ones_like(masks_tmp[0])  # 注释掉此行代表继承mask
+            #     mask = torch.where(others_soft > th, 0, mask)
+            #     masks.append(mask)
+            #     if i==1:
+            #         self.mask1_activ.append(mask.sum().item()/128)
+            #     elif i==2:
+            #         self.mask2_activ.append(mask.sum().item()/128)  
+            #     elif i==3:
+            #         self.mask3_activ.append(mask.sum().item()/128)    
+    
+    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
             
             for i in range(x_seq.size(0)):
                 x_single = x_seq[i]
