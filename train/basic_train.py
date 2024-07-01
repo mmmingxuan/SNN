@@ -55,8 +55,8 @@ class train_1_loss():
         num_updates = epoch * len(self.data_loader)
         header = 'Epoch: [{}]'.format(epoch)
 
-        from .record import sn 
-        from .node.LIFnode import MultiStepLIFNode
+        # from .record import sn 
+        # from .node.LIFnode import MultiStepLIFNode
         
         # sn_list = [sn() for _ in range(len(MultiStepLIFNode.get_all_neurons()))]
         
@@ -87,13 +87,16 @@ class train_1_loss():
 
             # from .node.LIFnode import MultiStepLIFNode
             # for index, Node_instance in enumerate(MultiStepLIFNode.get_all_neurons()):
-            #     sn_list[index].grad_1.append(Node_instance.grads_1[0])
-            #     sn_list[index].grad_before_2.append(Node_instance.grads_before[0])        
-            #     sn_list[index].grad_before_3.append(Node_instance.grads_before[1])
-            #     sn_list[index].grad_before_4.append(Node_instance.grads_before[2])  
-            #     sn_list[index].grad_after_2.append(Node_instance.grads_after[0])  
-            #     sn_list[index].grad_after_3.append(Node_instance.grads_after[1])  
-            #     sn_list[index].grad_after_4.append(Node_instance.grads_after[2])  
+                # sn_list[index].grad_1.append(Node_instance.grads_1[0])
+                # sn_list[index].grad_before_2.append(Node_instance.grads_before[0])        
+                # sn_list[index].grad_before_3.append(Node_instance.grads_before[1])
+                # sn_list[index].grad_before_4.append(Node_instance.grads_before[2])  
+                # sn_list[index].grad_after_2.append(Node_instance.grads_after[0])  
+                # sn_list[index].grad_after_3.append(Node_instance.grads_after[1])  
+                # sn_list[index].grad_after_4.append(Node_instance.grads_after[2]) 
+                # for t in range(10):
+                #     sn_list[index].norms[t].append(Node_instance.norms[0])
+                 
 
 
 
@@ -147,16 +150,16 @@ class train_1_loss():
         # mask_max_log["mask3_activ"] = np.mean(self.model.mask3_activ)
         # mask_max_log["mask3_backg"] = np.mean(self.model.mask3_backg)
 
-        mask_max_log["mask1_Eras"] = np.mean(self.model.mask1_activ)
-        mask_max_log["mask2_Eras"] = np.mean(self.model.mask2_activ)
-        mask_max_log["mask3_Eras"] = np.mean(self.model.mask3_activ)
+        # mask_max_log["mask1_Eras"] = np.mean(self.model.mask1_activ)
+        # mask_max_log["mask2_Eras"] = np.mean(self.model.mask2_activ)
+        # mask_max_log["mask3_Eras"] = np.mean(self.model.mask3_activ)
 
-        mask_max_log["p0"] = np.mean(self.model.p0)
-        mask_max_log["p1"] = np.mean(self.model.p1)
-        mask_max_log["p2"] = np.mean(self.model.p2)
-        mask_max_log["p3"] = np.mean(self.model.p3)
+        # mask_max_log["p0"] = np.mean(self.model.p0)
+        # mask_max_log["p1"] = np.mean(self.model.p1)
+        # mask_max_log["p2"] = np.mean(self.model.p2)
+        # mask_max_log["p3"] = np.mean(self.model.p3)
 
-        self.model.reset_mask()
+        # self.model.reset_mask()
 
         # import pandas as pd
         # import os
@@ -193,7 +196,7 @@ class train_1_loss():
             for image, target in metric_logger.log_every(self.data_loader_test, self.print_freq, header):
                 image = image.to(self.device, non_blocking=True)
                 target = target.to(self.device, non_blocking=True)
-                output = self.model(image)
+                output = self.model(image, target)
                 loss=torch.tensor([0.], device=output[0].device)
                 output = output[-1].mean(dim=0)
                 loss += self.loss_func(output, target)
@@ -207,9 +210,17 @@ class train_1_loss():
         # gather the stats from all processes
         metric_logger.synchronize_between_processes()
 
+        import numpy as np
+        mask_max_log = {}
+        # mask_max_log["p0"] = np.mean(self.model.p0)
+        # mask_max_log["p1"] = np.mean(self.model.p1)
+        # mask_max_log["p2"] = np.mean(self.model.p2)
+        # mask_max_log["p3"] = np.mean(self.model.p3)
+        # self.model.reset_mask()
+        
         loss, acc1, acc5 = metric_logger.loss.global_avg, metric_logger.acc1.global_avg, metric_logger.acc5.global_avg
         print(f' * Acc@1 = {acc1}, Acc@5 = {acc5}, loss = {loss}')
-        return loss, acc1, acc5
+        return loss, acc1, acc5, mask_max_log
 
     def resume(self,checkpoint_dir):
         checkpoint = torch.load(checkpoint_dir, map_location='cpu')
@@ -272,9 +283,9 @@ class train_1_loss():
                 self.train_tb_writer.add_scalar('train_loss', train_loss, epoch)
                 self.train_tb_writer.add_scalar('train_acc1', train_acc1, epoch)
                 self.train_tb_writer.add_scalar('train_acc5', train_acc5, epoch)
-            self.lr_scheduler.step()
+            self.lr_scheduler.step(epoch)
             
-            test_loss, test_acc1, test_acc5 = self.evaluate_one_epoch()
+            test_loss, test_acc1, test_acc5, mask_max_log2 = self.evaluate_one_epoch()
             if test_acc1 > max_test_acc: max_test_acc = test_acc1
 
             wandb_log = {
@@ -286,6 +297,7 @@ class train_1_loss():
                 "max_test_acc1": max_test_acc
             }
             wandb_log.update(mask_max_log)
+            wandb_log.update(mask_max_log2)
             wandb.log(wandb_log)
             
             

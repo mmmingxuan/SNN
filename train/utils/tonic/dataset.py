@@ -23,6 +23,9 @@ class Dataset:
         """
         Downloads from a given url, places into target folder and verifies the file hash.
         """
+        import ssl
+        ssl._create_default_https_context = ssl._create_unverified_context
+
         download_and_extract_archive(
             self.url, self.location_on_system, filename=self.filename, md5=self.file_md5
         )

@@ -189,7 +189,7 @@ def get_cifar10dvs_data(batch_size=128, num_workers=8,path=None,**kwargs):
     :param kwargs:
     :return: (train loader, test loader, mixup_active, mixup_fn)
     """
-    root="/home/ma-user/work/lw/dataset"
+    root="/data/wupeixuan/"
     step=10
     size = kwargs['size'] if 'size' in kwargs else 48
     sensor_size = tonic.datasets.CIFAR10DVS.sensor_size

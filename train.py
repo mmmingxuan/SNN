@@ -7,8 +7,10 @@ from train.utils.init_data import init_data
 from train.node import atan
 from train.node import LIFnode
 from train.utils import utils
+from train.utils.DC10_loader import build_dvscifar
 import torch.nn as nn
 from torch.cuda import amp
+import torch
 import os,time,torch
 import sys
 import argparse
@@ -28,11 +30,13 @@ import wandb
 
 def main(args):
 
-    # wandb.init(project="Self-erasing", name=s'SE:19baseline*|16 loss 8*8', tags=["Self-erasing", "baseline"])
+    # wandb.init(project="GR", name=s'SE:19baseline*|16 loss 8*8', tags=["GR", "baseline"])
     # wandb.init(project="SE", name='SE 掩码 w>0.8 w<0.01', tags=["SE"])
-    # wandb.init(project="Self-erasing", name='4loss+baseline', tags=["Self-erasing"])
+    # wandb.init(project="GR", name='4loss w=2', tags=["GR"])
     # wandb.init(project="DEBUG",name="debug")
-    wandb.init(project="record",name="前无后有 w=0 看其他")
+    wandb.init(project="DVS",name="resnet19 baseline detach_s=0.1")
+    # wandb.init(project="record",name="28|TET|oneToAll+结合阈值 y=0.5 w=0")
+    # wandb.init(project="record",name="28|TET|前平均+结合阈值 y=0.5 w=-0.4")
 
     norm_func=default_norm_func
     scale_func=default_scale_func
@@ -89,6 +93,7 @@ def main(args):
     #dataset
     if "cifar10_dvs" in args.dataset:
         args.T=10
+
     data_loader, data_loader_test = init_data(args.dataset+("_aug" if args.aug else ""))(batch_size=args.batch_size, path=args.data_path,T=args.T,data_path=args.data_path)
     
     #model
@@ -224,7 +229,7 @@ def parse_args():
 
     #dataset settings
     parser.add_argument('--dataset', default='cifar100', help='dataset', type=str)
-    parser.add_argument('--data_path', default='"/home/wliu/data/datasets/"', help='dataset', type=str)
+    parser.add_argument('--data_path', default='/data/wupeixuan/CIFAR_100_SNN_Higher_Jelly/CIFAR100/', help='dataset', type=str)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--num_classes', default=100, type=int)
     parser.add_argument('--aug', action='store_true')

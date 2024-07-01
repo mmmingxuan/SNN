@@ -122,7 +122,7 @@ class MultiStepLIFNode(LIFNode):
             self.grad_l_list=[]
             # self.delta_v=[]
         
-        self.norms = []
+        self.norms = [[] for _ in range(10)]  # 里面是时间步长度
         self.grads_1 = []
         self.grads_before = []
         self.grads_after = []
@@ -212,13 +212,13 @@ class MultiStepLIFNode(LIFNode):
             if self.record_norm:
                 spike_seq.append(self.forward_GradRefine_Standard_Deviation_step(x_seq[t],self.grad_l_1[t],self.grad_l[t]).unsqueeze(0))
             else:
-                spike_seq.append(self.forward_GradRefine_Standard_Deviation_step(x_seq[t]).unsqueeze(0))
+                spike_seq.append(self.forward_GradRefine_Standard_Deviation_step_1(x_seq[t]).unsqueeze(0), t)
             self.v_seq.append(self.v)
         spike_seq = torch.cat(spike_seq, 0)
         self.v_seq = torch.stack(self.v_seq, 0)
         self.norm_list=-1
         # self.tp_v_seq.append(self.v_seq)
-        self.rates = self.calculate_spike_rates(spike_seq)
+        # self.rates = self.calculate_spike_rates(spike_seq)
         return spike_seq
     
 
@@ -257,9 +257,9 @@ class MultiStepLIFNode(LIFNode):
     
     @staticmethod
     def heaviside(x: torch.Tensor):
-        return (x > 1e-9).to(x)
+        return (x >= 0).to(x)
     
-    def forward_GradRefine_Standard_Deviation_step_1(self, x: torch.Tensor,grad_l_1=None,grad_l=None):
+    def forward_GradRefine_Standard_Deviation_step_1(self, x: torch.Tensor, t, grad_l_1=None,grad_l=None):
         self.neuronal_charge(x)
         # self.delta_v.append((self.v.detach() - self.v_threshold).cpu())
         if self.norm_list==-1:
@@ -280,20 +280,24 @@ class MultiStepLIFNode(LIFNode):
             norm=self.norm_func(norm)
             if norm<1: norm = 1
             scale = 1
+        
+        # 记录不同时间步的norm值
+        self.norms[t].append(norm)
+        
         spike = self.neuronal_fire_GradRefine(norm,scale,grad_l_1,grad_l)
         self.mask = self.heaviside(self.v.detach() - self.v_threshold)
         self.neuronal_reset(spike)
         return spike
 
     def neuronal_fire_GradRefine(self,norm,scale,grad_l_1=None,grad_l=None):
-        return self.surrogate_function(self.v - self.v_threshold,norm,scale,grad_l_1,grad_l)
-        # return self.surrogate_function((self.v - self.v_threshold) * (1 - self.mask),norm,scale,grad_l_1,grad_l) + self.surrogate_function((self.v - self.v_threshold) * self.mask,1,scale,grad_l_1,grad_l)
+        # return self.surrogate_function(self.v - self.v_threshold,norm,scale,grad_l_1,grad_l)
+        return self.surrogate_function((self.v - self.v_threshold),norm,scale,grad_l_1,grad_l) * (1 - self.mask) + self.surrogate_function((self.v - self.v_threshold),1,scale,grad_l_1,grad_l) * self.mask
 
     def extra_repr(self):
         return super().extra_repr() + f', backend={self.backend}'
 
     def reset(self):
-        self.norms = []
+        self.norms = [[] for _ in range(10)]
         self.grads_1 = []
         self.grads_before = []
         self.grads_after = []

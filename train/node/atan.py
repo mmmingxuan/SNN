@@ -4,8 +4,7 @@ import torch.nn.functional as F
 import math
 
 def heaviside(x: torch.Tensor):
-    # return (x >= 0).to(x)
-    return (x > 1e-8).to(x)
+    return (x >= 0).to(x)
 
 class SurrogateFunctionBase(nn.Module):
     def __init__(self, alpha, spiking=True):
@@ -74,7 +73,6 @@ class ATan(SurrogateFunctionBase):
 class atan_GradRefine(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, alpha, norm_factor, scale_factor):
-        # print(grad_l_1.device,grad_l.device)
         if x.requires_grad:
             ctx.save_for_backward(x)
             ctx.alpha = alpha
@@ -87,8 +85,6 @@ class atan_GradRefine(torch.autograd.Function):
         grad_x = None
         if ctx.needs_input_grad[0]: 
             grad_x = ctx.scale_factor * ctx.alpha / 2 / (1 + (math.pi / 2 * ctx.alpha * ctx.saved_tensors[0]/ ctx.norm_factor ).pow_(2)) * grad_output
-        # if ctx.needs_input_grad[0]: 
-        #     grad_x = ctx.scale_factor * ctx.alpha / 2 / (1 + (math.pi / 2 * ctx.alpha * ctx.saved_tensors[0] * ctx.norm_factor ).pow_(2)) * grad_output
         
         return grad_x, None,None,None
                                                                                                   

@@ -16,13 +16,14 @@ from .bottenleck import bottleneck
 class MultiStepResNet18(nn.Module):
     def __init__(self, block, layers, num_classes=1000,datasets="imnet", zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=[False, False, False],
-                 norm_layer=None, T:int=None, multi_step_neuron: callable = None,multi_out=False, **kwargs):
+                 norm_layer=None, T:int=None, multi_step_neuron: callable = None,multi_out=False, SE=False, **kwargs):
         super().__init__()
         self.T = T
         self._norm_layer = norm_layer
         self.multi_out=multi_out
         self.inplanes = 64
         self.dilation = 1
+        self.SE = SE
         self.datasets=datasets
         if len(replace_stride_with_dilation) != 3:
             raise ValueError("replace_stride_with_dilation should be None "
@@ -169,7 +170,7 @@ class MultiStepResNet18(nn.Module):
         x_seq = self.layer4(x_seq) 
 
         
-        if self.training:
+        if self.training and self.SE:
             outs = []
             for i in range(x_seq.size(0)):
                 if i == 0:
@@ -532,7 +533,7 @@ class MultiStepResNet19(nn.Module):
         
         if self.multi_out:
             x1s=self.bottleneck1_1(x_seq)
-            if self.training and 0:
+            if self.training and self.SE:
                 outs = []
                 for i in range(x1s.size(0)):
                     if i == 0:
@@ -587,7 +588,7 @@ class MultiStepResNet19(nn.Module):
         
         if self.multi_out:
             x2s=self.bottleneck2_1(x_seq)
-            if self.training and 0:
+            if self.training and self.SE:
                 outs = []
                 for i in range(x2s.size(0)):
                     if i == 0:
@@ -648,29 +649,14 @@ class MultiStepResNet19(nn.Module):
             for i in range(x_seq.size(0)):
                 x_tmp = x_seq[i].detach()
                 x_tmp = self.fc(x_tmp.permute(0, 2, 3, 1).contiguous().view(128*8*8,512)).view(128,8,8,100).permute(0,3,1,2).contiguous()
-                
+                mask = x_tmp
                 # x_tmp = torch.nn.functional.softmax(x_tmp, dim=1)  # softmax应用在每个8x8像素点上的100维向量
-                
-                mask = x_tmp[torch.arange(128), label]
+                # mask = x_tmp[torch.arange(len(label)), label]
                 
                 # mask = functional.softmax_normalize_mask(mask)
                 
                 mask = mask.detach()
                 masks_tmp.append(mask)
-                
-                # count_activ = torch.where(mask > 0.7, 1, 0).sum().item()
-                # count_backg = torch.where(mask < 0.05, 1, 0).sum().item()
-                
-                # if i==1:
-                #     self.mask1_activ.append(count_activ/128)
-                #     self.mask1_backg.append(count_backg/128)
-                # elif i==2:
-                #     self.mask2_activ.append(count_activ/128)
-                #     self.mask2_backg.append(count_backg/128)
-                # elif i==3:
-                #     self.mask3_activ.append(count_activ/128)
-                #     self.mask3_backg.append(count_backg/128)
-
 
             masks_tmp = torch.stack(masks_tmp)
 
@@ -692,40 +678,58 @@ class MultiStepResNet19(nn.Module):
             #     masks.append(mask)
 
     # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的mean,然后进行掩码，不包含自己，所以第0个mask是全为1的
-            masks = [] 
-            mask = torch.ones_like(masks_tmp[0])
-            masks.append(mask)
-            th = 0.8
-            for i in range(1, masks_tmp.size(0)):
-                
-                # 动态阈值，阈值为均值＋标准差
-                # th = functional.caculate_th(masks_tmp[i-1]).to(mask.device)
-                # mask = torch.where(masks_tmp[i-1] > th.unsqueeze(1).unsqueeze(2), 0, mask)
-                
-                # 固定阈值
-                # mask = torch.where(masks_tmp[i-1] > th, 0, mask)
-                
-                masks.append(mask)    
-                if i==1:
-                    self.mask1_activ.append(mask.sum().item()/128)
-                elif i==2:
-                    self.mask2_activ.append(mask.sum().item()/128)  
-                elif i==3:
-                    self.mask3_activ.append(mask.sum().item()/128)    
-
-    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的过完FC平均再Softmax，不包含自己，所以第0个mask是全为1的
-            # 所以要记得把之前的softmax注释掉，这里操作的masks_tmp是原始过完FC的
+            # 每一步关注之前步关注不到的 ,进行掩码，不包含自己，所以第0个mask是全为1的
             # masks = [] 
             # mask = torch.ones_like(masks_tmp[0])
             # masks.append(mask)
-            # th = 0.7
+            # th = 0.8
             # for i in range(1, masks_tmp.size(0)):
-            #     others_mean = torch.mean(masks_tmp[:i], dim=0)
+            # #     # 注释掉代表mask会继承
+            #     # mask = torch.ones_like(masks_tmp[0])
+                
+            # #     # 动态阈值，阈值为均值＋标准差
+            # #     # th = functional.calculate_th(masks_tmp[i-1]).to(mask.device)
+            # #     # mask = torch.where(masks_tmp[i-1] > th.unsqueeze(1).unsqueeze(2), 0, mask)
+                
+            #     # 固定阈值
+            #     mask = torch.where(masks_tmp[i-1] > th, 0, mask)
+                
+            # #     # 掩掉最大的n个
+            # #     # n = 20
+            # #     # mask = functional.mask_top_n(masks_tmp[i-1], n)
+                
+            #     masks.append(mask)    
+            #     if i==1:
+            #         self.mask1_activ.append(mask.sum().item()/128)
+            #     elif i==2:
+            #         self.mask2_activ.append(mask.sum().item()/128)  
+            #     elif i==3:
+            #         self.mask3_activ.append(mask.sum().item()/128)    
+
+
+    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+            # One To ALL 该时间步之外的所有时间步过完FC平均再Softmax,不包含自己\
+            # 所以每一步都有mask(即使是第一步)\ 
+            # 所以要记得把之前的softmax注释掉和挑选label那一行，这里操作的masks_tmp是原始过完FC的
+            # for i in range(masks_tmp.size(0)):
+            #     others_mean = torch.mean(torch.cat([masks_tmp[:i], masks_tmp[i+1:]]), dim=0)
             #     others_soft = torch.nn.functional.softmax(others_mean, dim=1)
-            #     mask = torch.ones_like(masks_tmp[0])  # 注释掉此行代表继承mask
-            #     mask = torch.where(others_soft > th, 0, mask)
+            #     others_mask = others_soft[torch.arange(len(label)), label]
+               
+            #     # 固定阈值
+            #     # th = 0.4
+            #     # mask = torch.ones_like(others_mask)  # 注释掉此行代表继承mask
+            #     # mask = torch.where(others_mask > th, 0, mask)
+                
+            #     # 动态阈值 + 选和固定阈值中相比更大的那个
+            #     w = -0.4
+            #     mask = torch.ones_like(others_mask)
+            #     th = functional.calculate_th(others_mask, w).to(mask.device)
+            #     y = 0.5
+            #     y_tensor = torch.tensor(y, device=th.device)
+            #     th = torch.where(th < y_tensor, y_tensor, th)
+            #     mask = torch.where(others_mask > th.unsqueeze(1).unsqueeze(2), 0, mask)
+                
             #     masks.append(mask)
             #     if i==1:
             #         self.mask1_activ.append(mask.sum().item()/128)
@@ -734,8 +738,82 @@ class MultiStepResNet19(nn.Module):
             #     elif i==3:
             #         self.mask3_activ.append(mask.sum().item()/128)    
     
+
     # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+            # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的过完FC平均再Softmax，不包含自己，所以第0个mask是全为1的
+            # 所以要记得把之前的softmax注释掉和挑选label那一行，这里操作的masks_tmp是原始过完FC的
+            # 抹除阈值以上的像素点
+            masks = [] 
+            # mask = torch.ones_like(masks_tmp[0])
+            mask = torch.ones(128, 8, 8).to(masks_tmp[0].device)
+            masks.append(mask)
+            for i in range(1, masks_tmp.size(0)):
+                others_mean = torch.mean(masks_tmp[:i], dim=0)
+                others_soft = torch.nn.functional.softmax(others_mean, dim=1)
+                others_mask = others_soft[torch.arange(len(label)), label]
+               
+                # 固定阈值
+                # th = 0.4
+                # mask = torch.ones_like(others_mask)  # 注释掉此行代表继承mask
+                # mask = torch.where(others_mask > th, 0, mask)
+                
+                # 动态阈值 + 选和固定阈值中相比更大的那个
+                w = -0.4
+                mask = torch.ones_like(others_mask)
+                th = functional.calculate_th(others_mask, w).to(mask.device)
+                y = 0.5
+                y_tensor = torch.tensor(y, device=th.device)
+                th = torch.where(th < y_tensor, y_tensor, th)
+                mask = torch.where(others_mask > th.unsqueeze(1).unsqueeze(2), 0, mask)
+                
+                masks.append(mask)
+                if i==1:
+                    self.mask1_activ.append(mask.sum().item()/128)
+                elif i==2:
+                    self.mask2_activ.append(mask.sum().item()/128)  
+                elif i==3:
+                    self.mask3_activ.append(mask.sum().item()/128)    
+    
+    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+            # 每一步关注之前所有步关注不到的，该时间步之前所有时间步的过完FC平均再Softmax，不包含自己，所以第0个mask是全为1的
+            # 所以要记得把之前的softmax注释掉，这里操作的masks_tmp是原始过完FC的
+            # 这个是固定抹除每个mask一定数量的最大值的像素点
+            # masks = [] 
+            # mask = torch.ones_like(masks_tmp[0])
+            # masks.append(mask)
+            # n = 20
+            # for i in range(1, masks_tmp.size(0)):
+            #     others_mean = torch.mean(masks_tmp[:i], dim=0)
+            #     others_soft = torch.nn.functional.softmax(others_mean, dim=1)
+            #     mask = functional.mask_top_n(others_soft, n)
+            #     masks.append(mask)
+            #     if i==1:
+            #         self.mask1_activ.append(mask.sum().item()/128)
+            #     elif i==2:
+            #         self.mask2_activ.append(mask.sum().item()/128)  
+            #     elif i==3:
+            #         self.mask3_activ.append(mask.sum().item()/128)    
             
+    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+            # 前面为需要对100维mask进行softmax，8*8维度上先不考虑
+            # 方法是想通过第0个时间步的预测结果，对每一个8*8的mask里的值排序后\
+            # 分为等分的三个时间步的mask，这三个mask分别用于后面三个时间步
+            # 这里有几个尝试，顺序问题，是让后面的时间步学习背景还是学习最高的那一份mask
+            # 答: 目前来看前面的时间步学概率高的那份比较好(前面的时间步学潜在，后面学背景)
+            # 其次是scale问题，还需不需要对mask进行scale操作
+            # masks = [] 
+            # mask = torch.ones_like(masks_tmp[0])
+            # masks.append(mask)
+            # mask1, mask2, mask3 = functional.calculate_mask(masks_tmp[0])
+            # masks.append(mask3)
+            # masks.append(mask2)
+            # masks.append(mask1)
+            # self.mask1_activ.append(mask1.sum().item()/128)
+            # self.mask2_activ.append(mask2.sum().item()/128)  
+            # self.mask3_activ.append(mask3.sum().item()/128)    
+            
+    # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    
             for i in range(x_seq.size(0)):
                 x_single = x_seq[i]
                 mask_sum = masks[i].sum(dim=(1, 2))
@@ -754,10 +832,10 @@ class MultiStepResNet19(nn.Module):
                 outs = torch.stack(outs, dim=0)
                 x_seq = outs
             else:
-                self.p0.append(torch.mean(torch.nn.functional.softmax(outs[0], dim=1)[torch.arange(128), label],dim=0).item())
-                self.p1.append(torch.mean(torch.nn.functional.softmax(outs[1], dim=1)[torch.arange(128), label],dim=0).item())
-                self.p2.append(torch.mean(torch.nn.functional.softmax(outs[2], dim=1)[torch.arange(128), label],dim=0).item())
-                self.p3.append(torch.mean(torch.nn.functional.softmax(outs[3], dim=1)[torch.arange(128), label],dim=0).item())
+                # self.p0.append(torch.mean(torch.nn.functional.softmax(outs[0], dim=1)[torch.arange(len(label)), label],dim=0).item())
+                # self.p1.append(torch.mean(torch.nn.functional.softmax(outs[1], dim=1)[torch.arange(len(label)), label],dim=0).item())
+                # self.p2.append(torch.mean(torch.nn.functional.softmax(outs[2], dim=1)[torch.arange(len(label)), label],dim=0).item())
+                # self.p3.append(torch.mean(torch.nn.functional.softmax(outs[3], dim=1)[torch.arange(len(label)), label],dim=0).item())
 
                 outs = torch.stack(outs, dim=0).unsqueeze(0)
 
@@ -771,8 +849,11 @@ class MultiStepResNet19(nn.Module):
         if self.multi_out:
             return torch.stack([x1s,x2s,x_seq])
         else:
+            self.p0.append(torch.mean(torch.nn.functional.softmax(x_seq[0], dim=1)[torch.arange(len(label)), label],dim=0).item())
+            self.p1.append(torch.mean(torch.nn.functional.softmax(x_seq[1], dim=1)[torch.arange(len(label)), label],dim=0).item())
+            self.p2.append(torch.mean(torch.nn.functional.softmax(x_seq[2], dim=1)[torch.arange(len(label)), label],dim=0).item())
+            self.p3.append(torch.mean(torch.nn.functional.softmax(x_seq[3], dim=1)[torch.arange(len(label)), label],dim=0).item())
             return x_seq.unsqueeze(0)
-    
     
     def forward(self, x, label=None, epoch=None):
         """
@@ -784,6 +865,7 @@ class MultiStepResNet19(nn.Module):
         return self._forward_impl(x, label, epoch)
 
 def _multi_step_resnet(arch, block, layers, pretrained, progress, T, multi_step_neuron,norm_layer, **kwargs):
+    
     print('arch---------------', arch)
     if arch == 'resnet19':
         model = MultiStepResNet19(block, layers, T=T, multi_step_neuron=multi_step_neuron,norm_layer=norm_layer, **kwargs)

@@ -771,30 +771,6 @@ def kaiming_normal_conv_linear_weight(net: nn.Module):
 
 
 
-# def normalize_mask(mask):
-#     """
-#     Normalize each 4x4 matrix in the batch of masks to range [0, 1].
-
-#     Parameters:
-#         mask (torch.Tensor): A tensor of shape [batch_size, height, width]
-#         where each `height x width` is 4x4.
-
-#     Returns:
-#         torch.Tensor: A normalized tensor of the same shape as input.
-#     """
-#     # Find the minimum and maximum values for each 4x4 matrix
-#     min_vals = mask.view(mask.size(0), -1).min(dim=1, keepdim=True)[0]
-#     max_vals = mask.view(mask.size(0), -1).max(dim=1, keepdim=True)[0]
-
-#     # Compute the range and prevent division by zero
-#     ranges = max_vals - min_vals
-#     ranges[ranges == 0] = 1  # Set zero ranges to 1 to avoid division by zero
-
-#     # Perform normalization
-#     normalized_mask = (mask - min_vals.view(mask.size(0), 1, 1)) / ranges.view(mask.size(0), 1, 1)
-
-#     return normalized_mask
-
 def normalize_mask(mask):
     # 计算每个4x4子矩阵的和，保持维度以便进行广播操作
     sum_mask = torch.sum(mask, dim=(1, 2), keepdim=True)
@@ -815,3 +791,92 @@ def softmax_normalize_mask(mask):
     normalized_mask = normalized_mask_flat.view(128, mask.shape[1], mask.shape[2])
 
     return normalized_mask
+
+def calculate_th(tensor, w):
+    # 获取第一个维度的大小
+    n = tensor.size(0)
+
+    # 计算每个 8x8 矩阵的平均值和标准差，并将它们相加
+    result = torch.empty(n)
+    for i in range(n):
+        matrix = tensor[i]
+        mean = matrix.mean()
+        std = matrix.std()
+        result[i] = mean + w * std
+    
+    return result
+
+
+def mask_top_n(tensor, n):
+    """
+    将每个大小为 h*w 的张量中最大的 n 个值设置为 0，其余值设置为 1.
+    
+    参数：
+    tensor (torch.Tensor): 输入的 batch_size x h x w 张量
+    n (int): 要掩码的最大值的数量
+    
+    返回：
+    torch.Tensor: 掩码后的张量
+    """
+    # 获取张量的形状
+    batch_size, h, w = tensor.size()
+    
+    # 创建一个与输入张量形状相同的掩码张量
+    masked_tensor = tensor.clone()
+    
+    # 遍历 batch 维度中的每个 h*w 张量
+    for i in range(batch_size):
+        # 展平 h*w 张量并排序，找到前 n 个最大的值的位置
+        flat_tensor = tensor[i].flatten()
+        top_n_indices = flat_tensor.topk(n, largest=True).indices
+        
+        # 将这些位置的值设置为 0
+        flat_tensor[top_n_indices] = 0
+        
+        # 将其余位置的值设置为 1
+        flat_tensor[flat_tensor != 0] = 1
+        
+        # 将掩码后的张量恢复为 h*w 形状
+        masked_tensor[i] = flat_tensor.view(h, w)
+    
+    return masked_tensor
+
+
+def calculate_mask(tensor):
+    """
+    将每个大小为 h*w 的张量分为三类，并返回三个对应的掩码.
+    
+    参数：
+    tensor (torch.Tensor): 输入的 batch_size x h x w 张量
+    
+    返回：
+    tuple: 包含 mask1, mask2, mask3 的元组，分别对应三个掩码
+    """
+    # 获取张量的形状
+    batch_size, h, w = tensor.size()
+    
+    # 计算每个部分的大小
+    total_elements = h * w
+    third_size = total_elements // 3
+    
+    # 展平每个 h*w 张量并排序
+    flat_tensor = tensor.view(batch_size, -1)
+    sorted_indices = flat_tensor.argsort(dim=1)
+    
+    # 初始化掩码
+    mask1 = torch.zeros_like(flat_tensor)
+    mask2 = torch.zeros_like(flat_tensor)
+    mask3 = torch.zeros_like(flat_tensor)
+    
+    # 填充掩码
+    mask1.scatter_(1, sorted_indices[:, :third_size], 1)
+    mask2.scatter_(1, sorted_indices[:, third_size:2*third_size], 1)
+    mask3.scatter_(1, sorted_indices[:, 2*third_size:total_elements], 1)
+    
+    
+    # 恢复掩码的形状
+    mask1 = mask1.view(batch_size, h, w)
+    mask2 = mask2.view(batch_size, h, w)
+    mask3 = mask3.view(batch_size, h, w)
+    
+    return mask1, mask2, mask3
