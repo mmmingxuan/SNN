@@ -149,7 +149,7 @@ class CIFAR10DVS(Dataset):
         target_transform (callable, optional): A callable of transforms to apply to the targets/labels.
     """
 
-    url = "http://cifar10dvs.ridger.top/CIFAR10DVS.zip"
+    url = "https://figshare.com/ndownloader/articles/4724671/versions/2"
 
     filename = "CIFAR10DVS.zip"
     file_md5 = "ce3a4a0682dc0943703bd8f749a7701c"
@@ -191,7 +191,7 @@ class CIFAR10DVS(Dataset):
         }
 
         # if not self._check_exists():
-        #     self.download()
+        #     # self.download()
         #     for filename in self.data_filename:
         #         extract_archive(os.path.join(
         #             self.location_on_system, filename))

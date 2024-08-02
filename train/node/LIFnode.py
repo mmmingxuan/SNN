@@ -122,7 +122,7 @@ class MultiStepLIFNode(LIFNode):
             self.grad_l_list=[]
             # self.delta_v=[]
         
-        self.norms = [[] for _ in range(10)]  # 里面是时间步长度
+        self.norms = [] 
         self.grads_1 = []
         self.grads_before = []
         self.grads_after = []
@@ -212,7 +212,7 @@ class MultiStepLIFNode(LIFNode):
             if self.record_norm:
                 spike_seq.append(self.forward_GradRefine_Standard_Deviation_step(x_seq[t],self.grad_l_1[t],self.grad_l[t]).unsqueeze(0))
             else:
-                spike_seq.append(self.forward_GradRefine_Standard_Deviation_step_1(x_seq[t]).unsqueeze(0), t)
+                spike_seq.append(self.forward_GradRefine_Standard_Deviation_step_1(x_seq[t], t).unsqueeze(0))
             self.v_seq.append(self.v)
         spike_seq = torch.cat(spike_seq, 0)
         self.v_seq = torch.stack(self.v_seq, 0)
@@ -261,32 +261,48 @@ class MultiStepLIFNode(LIFNode):
     
     def forward_GradRefine_Standard_Deviation_step_1(self, x: torch.Tensor, t, grad_l_1=None,grad_l=None):
         self.neuronal_charge(x)
-        # self.delta_v.append((self.v.detach() - self.v_threshold).cpu())
+        v_adjusted = self.v - self.v_threshold
+        v_detached = v_adjusted.detach()  # 只调用一次 detach()
+        
         if self.norm_list==-1:
-            self.norm_list = self.norm_diff(self.v.detach() - self.v_threshold) / (self.v.detach() - self.v_threshold).numel()
-            self.mask = self.heaviside(self.v.detach() - self.v_threshold)
+            norm_value = self.norm_diff(v_detached)
+            self.norm_list = norm_value.item() / v_detached.numel()
+            self.mask = self.heaviside(v_detached)
+            
+            # 源代码，未优化显存
+            # self.norm_list = self.norm_diff(self.v.detach() - self.v_threshold) / (self.v.detach() - self.v_threshold).numel()
+            # self.mask = self.heaviside(self.v.detach() - self.v_threshold)
+            
             # grad = self.norm_diff(self.ATAN(self.v.detach() - self.v_threshold, 1))
             # self.grads_1.append(grad.item())
             norm,scale=1.,1.
-            # if self.record_norm:
-            #     # self.temp_norm_list.append([float(norm)])
-            #     self.temp_norm_list.append([(float(((self.v.detach() - self.v_threshold)**2).sum()**(1/2)),float((self.v.detach() - self.v_threshold).abs().sum()))])
+
         elif self.norm_list=='-1':
             norm,scale=1.,1.
             if self.record_norm:
                 self.temp_norm_list[-1].append((float(((self.v.detach() - self.v_threshold)**2).sum()**(1/2)),float((self.v.detach() - self.v_threshold).abs().sum())))
+                
         else:
-            norm = ( self.norm_diff((self.v.detach() - self.v_threshold) * (1 - self.mask))/(1 - self.mask).sum() )/ self.norm_list
-            norm=self.norm_func(norm)
-            if norm<1: norm = 1
+            mask_inv = 1 - self.mask
+            norm = self.norm_diff(v_adjusted * mask_inv) / mask_inv.sum() / self.norm_list
+            norm = self.norm_func(norm).item()
+            if norm < 1:
+                norm = 1
+            
+            # 源代码，未优化显存
+            # norm = ( self.norm_diff((self.v.detach() - self.v_threshold) * (1 - self.mask))/(1 - self.mask).sum() )/ self.norm_list
+            # norm=self.norm_func(norm).item()
+            # if norm<1: norm = 1
+            
             scale = 1
         
         # 记录不同时间步的norm值
-        self.norms[t].append(norm)
+        # self.norms.append(norm)
         
         spike = self.neuronal_fire_GradRefine(norm,scale,grad_l_1,grad_l)
-        self.mask = self.heaviside(self.v.detach() - self.v_threshold)
+        self.mask = self.heaviside(v_detached)  # 更新mask发生在所有计算之后
         self.neuronal_reset(spike)
+        
         return spike
 
     def neuronal_fire_GradRefine(self,norm,scale,grad_l_1=None,grad_l=None):
@@ -297,7 +313,7 @@ class MultiStepLIFNode(LIFNode):
         return super().extra_repr() + f', backend={self.backend}'
 
     def reset(self):
-        self.norms = [[] for _ in range(10)]
+        self.norms = []
         self.grads_1 = []
         self.grads_before = []
         self.grads_after = []
